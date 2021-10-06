@@ -1,6 +1,7 @@
 .idea/
-data_process/data/
+data_process/new_data/
 data_process/annotated_data/
+data_process/util_data/
 
 
 # =======================================
