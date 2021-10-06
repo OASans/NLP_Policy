@@ -7,6 +7,12 @@ import numpy as np
 import pandas as pd
 
 
+class DBConfig:
+    def __init__(self):
+        self.add_new_data_to_db = False
+        self.convert_db_to_dataset = True
+
+
 class PolicyDB:
     def __init__(self, db_name='policy.db'):
         self.conn = sqlite3.connect(db_name)
@@ -163,17 +169,18 @@ class PolicyDB:
 
     # 插入entity表记录
     # info = (sid, entity, entity_type)
-    def insert_entity(self, info, sentence):
-        if info[2] == '发布时间' and info[1] not in sentence:
-            time = str(info[1])
-            time_match = re.search(r"(\d{4}\S\d{1,2}\S\d{1,2})", time)
-            if not time_match:
-                return
-            time_pattern = time_match.group(0)[:4] + "\S\d{1,2}\S\d{1,2}号*日*"
-            standard_time = re.search(time_pattern, sentence)
-            if not standard_time:
-                return
-            info = (info[0], standard_time.group(0), info[2])
+    def insert_entity(self, info):
+        # TODO：时间格式问题，放到db2dataset中去处理
+        # if info[2] == '发布时间' and info[1] not in sentence:
+        #     time = str(info[1])
+        #     time_match = re.search(r"(\d{4}\S\d{1,2}\S\d{1,2})", time)
+        #     if not time_match:
+        #         return
+        #     time_pattern = time_match.group(0)[:4] + "\S\d{1,2}\S\d{1,2}号*日*"
+        #     standard_time = re.search(time_pattern, sentence)
+        #     if not standard_time:
+        #         return
+        #     info = (info[0], standard_time.group(0), info[2])
         sql = ''' INSERT INTO entity(sid,entity,entity_type)
                   VALUES(?,?,?) '''
         cur = self.conn.cursor()
@@ -226,8 +233,7 @@ class PolicyDB:
             # 插入到entity表
             for j in range(1, 6):
                 if file_content.loc[i, '实体' + str(j)] != '' and file_content.loc[i, '实体类别' + str(j)] != '':
-                    self.insert_entity((sid, file_content.loc[i, '实体' + str(j)], file_content.loc[i, '实体类别' + str(j)]),
-                                       sentence)
+                    self.insert_entity((sid, file_content.loc[i, '实体' + str(j)], file_content.loc[i, '实体类别' + str(j)]))
             # 插入到entry表
             for j in range(1, 16):
                 if file_content.loc[i, '准入条件id' + str(j)] != '':
@@ -254,17 +260,32 @@ class PolicyDB:
                     continue
                 print(file)
                 self.read_new_file(file)
+            # 将原本的文件夹删除
+            os.rmdir(annotated_folder)
+
+
+class DB2DataSet:
+    def __init__(self, db_name='policy.db', dataset_path='./datasets/'):
+        self.conn = sqlite3.connect(db_name)
+        self.dataset_path = dataset_path
+
+        if not os.path.exists(dataset_path):
+            os.makedirs(dataset_path)
 
 
 if __name__ == '__main__':
-    db = PolicyDB()
+    config = DBConfig()
+    if config.add_new_data_to_db:
+        db = PolicyDB()
 
-    db.delete_from_table('annotated_sentence')
-    db.delete_from_table('entity')
-    db.delete_from_table('entry')
-    db.delete_from_table('entry_logic')
+        # db.delete_from_table('annotated_sentence')
+        # db.delete_from_table('entity')
+        # db.delete_from_table('entry')
+        # db.delete_from_table('entry_logic')
 
-    db.add_new_data()
+        db.add_new_data()
 
+        db.close_db()
+    if config.convert_db_to_dataset:
+        dataset_converter = DB2DataSet()
 
-    db.close_db()
