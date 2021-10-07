@@ -370,14 +370,21 @@ class DB2DataSet:
             # 发布时间由于使用excel，有比较多需要处理的地方
             if value[2] == '发布时间':
                 standard_time = date_standarder(value[1], value[3])
-                values[i] = (value[0], standard_time, value[2], value[3])
-            # 在sentence里面找entity的始末位置
-            match = re.search(value[1], value[3])
-            if match:
-                legal_values.append((value[0], value[1], value[2], value[3], match.span()))
+                value = (value[0], standard_time, value[2], value[3])
+
+            if value[1] not in value[3]:
+                print('not match:', value)
+            else:
+                start = value[3].find(value[1])
+                end = start + len(value[1]) - 1
+                substring = value[3][start:end + 1]
+                if substring != value[1]:
+                    print('substring not match:', value)
+                else:
+                    legal_values.append((value[0], value[1], value[2], value[3], (start, end)))
 
         keys = ['sid', 'entity', 'entity_type', 'sentence', 'entity_span']
-        data = [dict(zip(keys, value)) for value in values]
+        data = [dict(zip(keys, value)) for value in legal_values]
 
         with open(dataset_path, 'w') as f:
             json.dump(data, f)
