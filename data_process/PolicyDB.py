@@ -10,7 +10,7 @@ import pandas as pd
 
 class DBConfig:
     def __init__(self):
-        self.add_new_data_to_db = False
+        self.add_new_data_to_db = True
         self.convert_db_to_dataset = True
 
 
@@ -18,14 +18,17 @@ class PolicyDB:
     def __init__(self, db_name='policy.db'):
         self.conn = sqlite3.connect(db_name)
 
+    # 关闭数据库连接，最好在使用对象的最后调用一下
     def close_db(self):
         self.conn.close()
 
+    # 展示数据库内所有表格
     def display_all_tables(self):
         c = self.conn.cursor()
         c.execute("select name from sqlite_master where type='table' order by name")
         print(c.fetchall())
 
+    # 创建表
     def create_table(self, sql):
         # sql = """create table tagger (
         # id varchar(20),
@@ -36,11 +39,13 @@ class PolicyDB:
         c.execute(sql)
         self.conn.commit()
 
+    # drop表
     def drop_table(self, table_name):
         c = self.conn.cursor()
         c.execute("""drop table {}""".format(table_name))
         self.conn.commit()
 
+    # 从表中选择，只给表名的话默认选择全部记录
     def select_from_table(self, table_name="", sql=""):
         c = self.conn.cursor()
         if sql != "":
@@ -49,6 +54,7 @@ class PolicyDB:
             c.execute("""select * from {}""".format(table_name))
         print(c.fetchall())
 
+    # 从表中删除，只给表名的话默认删除全部记录
     def delete_from_table(self, table_name="", sql=""):
         c = self.conn.cursor()
         if sql!= "":
@@ -57,6 +63,7 @@ class PolicyDB:
             c.execute("""delete from {} where 1=1""".format(table_name))
         self.conn.commit()
 
+    # 更新标注人员信息
     def update_tagger_info(self):
         people = pd.DataFrame(
             [['王昕', '20307090013', 1], ['虎雪', '19307090201', 0], ['苏慧怡', '19307090197', 1], ['赵子昂', '20307090056', 1], ['王心恬', '19307090134', 1],
@@ -67,6 +74,7 @@ class PolicyDB:
         people.to_sql('tagger', self.conn, if_exists='replace', index=False)
         self.conn.commit()
 
+    # 查看目前在工作的标注人员
     def count_tagger(self):
         c = self.conn.cursor()
         c.execute("""select count(name) from tagger where status==1""")
@@ -74,6 +82,7 @@ class PolicyDB:
         c.execute("""select * from tagger where status==1""")
         print(c.fetchall())
 
+    # 创建policy表
     def create_policy_table(self):
         # if policy already exists
         self.drop_table('policy')
@@ -86,6 +95,7 @@ class PolicyDB:
                             annotate_time varchar(20)
                             )""")
 
+    # 插入policy记录
     def insert_policies(self):
         cursor = self.conn.cursor()
         folder_list = glob.glob('/Volumes/TOURO Mobil/policy标注/政策文件rawdata/*')
@@ -103,6 +113,7 @@ class PolicyDB:
                               VALUES ('{}', '{}', '{}', 0, '', '')".format(uid, origin_id, file_name))
         self.conn.commit()
 
+    # 创建annotated_sentence表
     def create_annotated_sentence_table(self):
         # if annotated_sentence already exists
         self.drop_table('annotated_sentence')
@@ -114,6 +125,7 @@ class PolicyDB:
                             sentence_type varchar(20)
                             )""")
 
+    # 创建entity表
     def create_entity_table(self):
         # if entity already exists
         self.drop_table('entity')
@@ -123,6 +135,7 @@ class PolicyDB:
                             entity_type varchar(20)
                             )""")
 
+    # 创建entry表
     def create_entry_table(self):
         # if entry already exists
         self.drop_table('entry')
@@ -138,6 +151,7 @@ class PolicyDB:
                             primary key (sid,eid)
                             )""")
 
+    # 创建entry_logic表
     def create_entry_logic_table(self):
         # if entry_logic already exists
         self.drop_table('entry_logic')
@@ -252,6 +266,7 @@ class PolicyDB:
 
         self.conn.commit()
 
+    # 将new_data文件夹中的所有新标注文件在数据库中留下记录，并且最后删除new_data中的空文件夹
     def add_new_data(self, directory_path='./new_data'):
         annotated_folder_list = glob.glob('{}/*-*'.format(directory_path))
         for annotated_folder in annotated_folder_list:
@@ -273,9 +288,11 @@ class DB2DataSet:
         if not os.path.exists(dataset_path):
             os.makedirs(dataset_path)
 
+    # 关闭数据库连接，最好在使用对象的最后调用一下
     def close_db(self):
         self.conn.close()
 
+    # sentence_classification数据集converter
     def generate_sentence_classification_dataset(self):
         dataset_path = self.dataset_path + 'sentence_classification.json'
         if os.path.exists(dataset_path):
@@ -291,6 +308,11 @@ class DB2DataSet:
         with open(dataset_path, 'w') as f:
             json.dump(data, f)
 
+    # entity数据集converter
+    # def generate_entity_dataset(self):
+
+
+    # all converter pipeline
     def generate_all_datasets(self):
         self.generate_sentence_classification_dataset()
 
@@ -300,10 +322,10 @@ if __name__ == '__main__':
     if config.add_new_data_to_db:
         db = PolicyDB()
 
-        # db.delete_from_table('annotated_sentence')
-        # db.delete_from_table('entity')
-        # db.delete_from_table('entry')
-        # db.delete_from_table('entry_logic')
+        db.delete_from_table('annotated_sentence')
+        db.delete_from_table('entity')
+        db.delete_from_table('entry')
+        db.delete_from_table('entry_logic')
 
         db.add_new_data()
 
@@ -311,10 +333,8 @@ if __name__ == '__main__':
 
     if config.convert_db_to_dataset:
         dataset_converter = DB2DataSet()
-        # dataset_converter.generate_sentence_classification_dataset()
-        
-
+        dataset_converter.generate_sentence_classification_dataset()
 
         # dataset_converter.generate_all_datasets()
 
-        db.close_db()
+        dataset_converter.close_db()
