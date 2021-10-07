@@ -1,6 +1,7 @@
 import os
 import re
 import glob
+import json
 import shutil
 import sqlite3
 import numpy as np
@@ -272,6 +273,27 @@ class DB2DataSet:
         if not os.path.exists(dataset_path):
             os.makedirs(dataset_path)
 
+    def close_db(self):
+        self.conn.close()
+
+    def generate_sentence_classification_dataset(self):
+        dataset_path = self.dataset_path + 'sentence_classification.json'
+        if os.path.exists(dataset_path):
+            os.remove(dataset_path)
+
+        c = self.conn.cursor()
+        c.execute("""select * from annotated_sentence""")
+        values = c.fetchall()
+
+        keys = ['uid', 'sid', 'sentence', 'sentence_type']
+        data = [dict(zip(keys, value)) for value in values]
+
+        with open(dataset_path, 'w') as f:
+            json.dump(data, f)
+
+    def generate_all_datasets(self):
+        self.generate_sentence_classification_dataset()
+
 
 if __name__ == '__main__':
     config = DBConfig()
@@ -286,6 +308,13 @@ if __name__ == '__main__':
         db.add_new_data()
 
         db.close_db()
+
     if config.convert_db_to_dataset:
         dataset_converter = DB2DataSet()
+        # dataset_converter.generate_sentence_classification_dataset()
+        
 
+
+        # dataset_converter.generate_all_datasets()
+
+        db.close_db()
