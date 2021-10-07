@@ -10,7 +10,7 @@ import pandas as pd
 
 class DBConfig:
     def __init__(self):
-        self.add_new_data_to_db = True
+        self.add_new_data_to_db = False
         self.convert_db_to_dataset = True
 
 
@@ -293,6 +293,7 @@ class DB2DataSet:
         self.conn.close()
 
     # sentence_classification数据集converter
+    # TODO：后续可以考虑增加前后上下文句子拼接
     def generate_sentence_classification_dataset(self):
         dataset_path = self.dataset_path + 'sentence_classification.json'
         if os.path.exists(dataset_path):
@@ -309,12 +310,82 @@ class DB2DataSet:
             json.dump(data, f)
 
     # entity数据集converter
-    # def generate_entity_dataset(self):
+    def generate_entity_dataset(self):
+        def exceldate2datetime(excel_stamp):
+            delta = pd.Timedelta(str(excel_stamp) + 'D')
+            real_time = str(pd.to_datetime('1899-12-30') + delta)
+            return real_time
 
+        def date_standarder(origin_time, sentence):
+            if origin_time in sentence: return origin_time
+            # 是excel五位数字日期戳格式
+            if re.match('\d{5}$', origin_time):
+                origin_time = exceldate2datetime(origin_time)
+            time_match = re.search(r"(\d{4}.{0,1}\d{0,2}.{0,1}\d{0,2})", origin_time)
+            if not time_match: return origin_time
+            time_nums = re.findall(r"(\d+)", time_match.group(0))
+            if len(time_nums) == 1 and len(time_nums[0]) == 4:
+                time_pattern = time_nums[0] + "年*"
+                standard_time = re.search(time_pattern, sentence)
+                if not standard_time: return ''
+                return standard_time.group(0)
+            if len(time_nums) == 2 and len(time_nums[0]) == 4:
+                if len(time_nums[1]) == 2 and time_nums[1][0] == '0':
+                    time_nums[1] = time_nums[1][1]
+                time_pattern = time_nums[0] + ".0{0,1}" + time_nums[1] + "月*"
+                standard_time = re.search(time_pattern, sentence)
+                if not standard_time: return ''
+                return standard_time.group(0)
+            if len(time_nums) == 2 and len(time_nums[0]) <= 2:
+                if len(time_nums[0]) == 2 and time_nums[0][0] == '0':
+                    time_nums[0] = time_nums[0][1]
+                if len(time_nums[1]) == 2 and time_nums[1][0] == '0':
+                    time_nums[1] = time_nums[1][1]
+                time_pattern = "0{0,1}" + time_nums[0] + ".0{0,1}" + time_nums[1] + "日*号*"
+                standard_time = re.search(time_pattern, sentence)
+                if not standard_time: return ''
+                return standard_time.group(0)
+            if len(time_nums) >= 3:
+                if len(time_nums[1]) == 2 and time_nums[1][0] == '0':
+                    time_nums[1] = time_nums[1][1]
+                if len(time_nums[2]) == 2 and time_nums[2][0] == '0':
+                    time_nums[2] = time_nums[2][1]
+                time_pattern = time_nums[0] + ".0{0,1}" + time_nums[1] + ".0{0,1}" + time_nums[2] + "日*号*"
+                standard_time = re.search(time_pattern, sentence)
+                if not standard_time: return ''
+                return standard_time.group(0)
+
+        dataset_path = self.dataset_path + 'entity.json'
+        if os.path.exists(dataset_path):
+            os.remove(dataset_path)
+
+        c = self.conn.cursor()
+        c.execute(
+            """select entity.sid,entity.entity,entity.entity_type,annotated_sentence.sentence from entity 
+            left outer join annotated_sentence on entity.sid=annotated_sentence.sid""")
+        values = c.fetchall()  # sid, entity, entity_type, sentence
+
+        legal_values = []
+        for i, value in enumerate(values):
+            # 发布时间由于使用excel，有比较多需要处理的地方
+            if value[2] == '发布时间':
+                standard_time = date_standarder(value[1], value[3])
+                values[i] = (value[0], standard_time, value[2], value[3])
+            # 在sentence里面找entity的始末位置
+            match = re.search(value[1], value[3])
+            if match:
+                legal_values.append((value[0], value[1], value[2], value[3], match.span()))
+
+        keys = ['sid', 'entity', 'entity_type', 'sentence', 'entity_span']
+        data = [dict(zip(keys, value)) for value in values]
+
+        with open(dataset_path, 'w') as f:
+            json.dump(data, f)
 
     # all converter pipeline
     def generate_all_datasets(self):
         self.generate_sentence_classification_dataset()
+        self.generate_entity_dataset()
 
 
 if __name__ == '__main__':
@@ -333,7 +404,9 @@ if __name__ == '__main__':
 
     if config.convert_db_to_dataset:
         dataset_converter = DB2DataSet()
-        dataset_converter.generate_sentence_classification_dataset()
+        # dataset_converter.generate_sentence_classification_dataset()
+        dataset_converter.generate_entity_dataset()
+
 
         # dataset_converter.generate_all_datasets()
 
