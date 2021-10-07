@@ -4,15 +4,17 @@ import glob
 import json
 import shutil
 import sqlite3
+import unicodedata
 import collections
 import numpy as np
 import pandas as pd
+# TODO: unicodedata norm
 
 
 class DBConfig:
     def __init__(self):
         self.add_new_data_to_db = False
-        self.convert_db_to_dataset = True
+        self.convert_db_to_dataset = False
 
 
 class PolicyDB:
@@ -316,6 +318,7 @@ class DB2DataSet:
             json.dump(data, f)
 
     # entity数据集converter
+    # TODO: 是否要采样一些没有entity的句子加入数据集
     def generate_entity_dataset(self):
         """
         entity_dataset
@@ -407,13 +410,29 @@ class DB2DataSet:
             json.dump(data, f)
 
     # entry数据集converter
-    # TODO：接着写
+    # TODO: 是否要采样一些没有entry的句子加入数据集
     def generate_entry_dataset(self):
         """
         entry_dataset
         json数据
-        sid, sentence, entry_list
+        sid, sentence,
+        entry_list:[(eid, entry_type, var, relation, field, var_context, field_context, var_span, field_span)]
         """
+        def find_span(context, sentence):
+            if context == '':
+                return -1, -1
+            else:
+                if context not in sentence:
+                    print('context not match:', context, sentence)
+                    return None
+                start = sentence.find(context)
+                end = start + len(context) - 1
+                substring = sentence[start:end + 1]
+                if substring != context:
+                    print('substring not match:', context, sentence)
+                    return None
+            return start, end
+
         dataset_path = self.dataset_path + 'entry.json'
         if os.path.exists(dataset_path):
             os.remove(dataset_path)
@@ -423,7 +442,26 @@ class DB2DataSet:
             left outer join annotated_sentence on entry.sid=annotated_sentence.sid""")
         values = c.fetchall()  # sid, eid, entry_type, var, relation, field, var_context, field_context, sentence
 
-        print('test')
+        legal_values_in_sentence = collections.defaultdict(list)
+        sid2sentence = {}
+        for i, value in enumerate(values):
+            if value[0] not in sid2sentence:
+                sid2sentence[value[0]] = value[-1]
+            var_span = find_span(value[6], value[-1])
+            if not var_span: continue
+            field_span = find_span(value[7], value[-1])
+            if not field_span: continue
+            legal_values_in_sentence[value[0]].append(
+                (value[1], value[2], value[3], value[4], value[5], value[6], value[7], var_span, field_span))
+
+        legal_values = []
+        for k, v in legal_values_in_sentence.items():
+            legal_values.append((k, sid2sentence[k], v))
+        keys = ['sid', 'sentence', 'entry_list']
+        data = [dict(zip(keys, value)) for value in legal_values]
+
+        with open(dataset_path, 'w') as f:
+            json.dump(data, f)
 
     # all converter pipeline
     def generate_all_datasets(self):
@@ -437,20 +475,19 @@ if __name__ == '__main__':
     if config.add_new_data_to_db:
         db = PolicyDB()
 
-        db.delete_from_table('annotated_sentence')
-        db.delete_from_table('entity')
-        db.delete_from_table('entry')
-        db.delete_from_table('entry_logic')
+        # db.delete_from_table('annotated_sentence')
+        # db.delete_from_table('entity')
+        # db.delete_from_table('entry')
+        # db.delete_from_table('entry_logic')
 
         db.add_new_data()
-
         db.close_db()
 
     if config.convert_db_to_dataset:
         dataset_converter = DB2DataSet()
         # dataset_converter.generate_sentence_classification_dataset()
-        dataset_converter.generate_entity_dataset()
+        # dataset_converter.generate_entity_dataset()
         # dataset_converter.generate_entry_dataset()
 
-        # dataset_converter.generate_all_datasets()
+        dataset_converter.generate_all_datasets()
         dataset_converter.close_db()
