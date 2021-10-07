@@ -4,6 +4,7 @@ import glob
 import json
 import shutil
 import sqlite3
+import collections
 import numpy as np
 import pandas as pd
 
@@ -185,7 +186,7 @@ class PolicyDB:
     # 插入entity表记录
     # info = (sid, entity, entity_type)
     def insert_entity(self, info):
-        # TODO：时间格式问题，放到db2dataset中去处理
+        # 时间格式问题，放到db2dataset中去处理
         # if info[2] == '发布时间' and info[1] not in sentence:
         #     time = str(info[1])
         #     time_match = re.search(r"(\d{4}\S\d{1,2}\S\d{1,2})", time)
@@ -295,6 +296,11 @@ class DB2DataSet:
     # sentence_classification数据集converter
     # TODO：后续可以考虑增加前后上下文句子拼接
     def generate_sentence_classification_dataset(self):
+        """
+        sentence_classification_dataset:
+        json数据
+        uid, sid, sentence, sentence_type
+        """
         dataset_path = self.dataset_path + 'sentence_classification.json'
         if os.path.exists(dataset_path):
             os.remove(dataset_path)
@@ -311,6 +317,11 @@ class DB2DataSet:
 
     # entity数据集converter
     def generate_entity_dataset(self):
+        """
+        entity_dataset
+        json数据
+        sid, sentence, entity_list:[(entity, entity_type, entity_span)]
+        """
         def exceldate2datetime(excel_stamp):
             delta = pd.Timedelta(str(excel_stamp) + 'D')
             real_time = str(pd.to_datetime('1899-12-30') + delta)
@@ -365,8 +376,11 @@ class DB2DataSet:
             left outer join annotated_sentence on entity.sid=annotated_sentence.sid""")
         values = c.fetchall()  # sid, entity, entity_type, sentence
 
-        legal_values = []
+        legal_values_in_sentence = collections.defaultdict(list)
+        sid2sentence = {}
         for i, value in enumerate(values):
+            if value[0] not in sid2sentence:
+                sid2sentence[value[0]] = value[3]
             # 发布时间由于使用excel，有比较多需要处理的地方
             if value[2] == '发布时间':
                 standard_time = date_standarder(value[1], value[3])
@@ -381,18 +395,41 @@ class DB2DataSet:
                 if substring != value[1]:
                     print('substring not match:', value)
                 else:
-                    legal_values.append((value[0], value[1], value[2], value[3], (start, end)))
+                    legal_values_in_sentence[value[0]].append((value[1], value[2], (start, end)))
 
-        keys = ['sid', 'entity', 'entity_type', 'sentence', 'entity_span']
+        legal_values = []
+        for k, v in legal_values_in_sentence.items():
+            legal_values.append((k, sid2sentence[k], v))
+        keys = ['sid', 'sentence', 'entity_list']
         data = [dict(zip(keys, value)) for value in legal_values]
 
         with open(dataset_path, 'w') as f:
             json.dump(data, f)
 
+    # entry数据集converter
+    # TODO：接着写
+    def generate_entry_dataset(self):
+        """
+        entry_dataset
+        json数据
+        sid, sentence, entry_list
+        """
+        dataset_path = self.dataset_path + 'entry.json'
+        if os.path.exists(dataset_path):
+            os.remove(dataset_path)
+
+        c = self.conn.cursor()
+        c.execute("""select entry.*,annotated_sentence.sentence from entry 
+            left outer join annotated_sentence on entry.sid=annotated_sentence.sid""")
+        values = c.fetchall()  # sid, eid, entry_type, var, relation, field, var_context, field_context, sentence
+
+        print('test')
+
     # all converter pipeline
     def generate_all_datasets(self):
         self.generate_sentence_classification_dataset()
         self.generate_entity_dataset()
+        self.generate_entry_dataset()
 
 
 if __name__ == '__main__':
@@ -413,8 +450,7 @@ if __name__ == '__main__':
         dataset_converter = DB2DataSet()
         # dataset_converter.generate_sentence_classification_dataset()
         dataset_converter.generate_entity_dataset()
-
+        # dataset_converter.generate_entry_dataset()
 
         # dataset_converter.generate_all_datasets()
-
         dataset_converter.close_db()
