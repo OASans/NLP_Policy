@@ -11,7 +11,6 @@ class DataProcess:
 
         self.processed_data_path = os.path.join(os.getcwd(), 'data')
 
-
         self.train_path = os.path.join(self.processed_data_path, 'train.json')
         self.dev_path = os.path.join(self.processed_data_path, 'dev.json')
         self.test_path = os.path.join(self.processed_data_path, 'test.json')
