@@ -1,8 +1,10 @@
+from models import MethodE
 
 
 class Config:
     def __init__(self):
         # TODO: check these 5 lines every time
+        self.method = MethodE.ml
         self.debug_mode = True
         self.en_train = True
         self.en_test = True
@@ -21,6 +23,7 @@ class Config:
         self.vocab2idx = {}
         self.idx2vocab = {}
         self.dev_rate = 0.2
+        self.test_rate = 0.2
 
         # fitting
         self.batch_size = 10
@@ -38,3 +41,5 @@ class Config:
         self.word_embedding_dim = 300
 
 
+if __name__ == '__main__':
+    config = Config()
