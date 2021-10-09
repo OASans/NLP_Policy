@@ -13,9 +13,13 @@ def conv2pkl():
     raw_data = raw_fp.readlines()[1:]
     vocab_list = {'PAD': 0}
     vec_list = [[0.0] * 300]
+    pad_flag = 1
     for index, d in enumerate(raw_data):
         d = d.split()
-        vocab_list[d[0]] = index + 1
+        if d[0] == 'PAD':
+            pad_flag = 0
+            continue
+        vocab_list[d[0]] = index + pad_flag
         vec = [float(s) for s in d[1:]]
         vec_list.append(vec)
 

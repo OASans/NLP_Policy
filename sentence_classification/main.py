@@ -1,29 +1,20 @@
+from data_process import DataProcessConfig, DataProcess
 from models import MethodE
 
 
 class Config:
     def __init__(self):
-        # TODO: check these 5 lines every time
+        # TODO: check these 7 lines every running time
         self.method = MethodE.ml
+        self.use_cuda = False
+        self.need_preprocess = True
         self.debug_mode = True
         self.en_train = True
         self.en_test = True
-        self.need_preprocess = True
         self.unique = 'testing'
 
-        # cuda setting
-        self.use_cuda = False
-
-        # DataSet
-        self.raw_data_path = '../data_process/datasets/sentence_classification.json'
-        self.label_num = 0
-        self.label2idx = {}
-        self.idx2label = {}
-        self.vocab_size = 0
-        self.vocab2idx = {}
-        self.idx2vocab = {}
-        self.dev_rate = 0.2
-        self.test_rate = 0.2
+        self.data_process_config = DataProcessConfig(self.method)
+        self.data_process_config.preprocess = True if self.need_preprocess else False
 
         # fitting
         self.batch_size = 10
@@ -43,3 +34,7 @@ class Config:
 
 if __name__ == '__main__':
     config = Config()
+    data_process = DataProcess(config.data_process_config)
+
+    if config.need_preprocess:
+        data_process.preprocess()

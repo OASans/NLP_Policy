@@ -5,6 +5,7 @@ data_process/annotated_data/
 data_process/util_data/
 data_process/pretrained/
 data_process/notebooks/
+data_process/.DS_Store
 
 sentence_classification/data/
 
