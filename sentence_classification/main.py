@@ -1,11 +1,9 @@
 from data_process import DataProcessConfig, DataProcess
-from models import MethodE
 
 
 class Config:
     def __init__(self):
-        # TODO: check these 7 lines every running time
-        self.method = MethodE.ml
+        # TODO: check these lines every running time
         self.use_cuda = False
         self.need_preprocess = True
         self.debug_mode = True
@@ -13,7 +11,8 @@ class Config:
         self.en_test = True
         self.unique = 'testing'
 
-        self.data_process_config = DataProcessConfig(self.method)
+        # data process
+        self.data_process_config = DataProcessConfig()
         self.data_process_config.preprocess = True if self.need_preprocess else False
 
         # fitting
@@ -38,3 +37,12 @@ if __name__ == '__main__':
 
     if config.need_preprocess:
         data_process.preprocess()
+
+    if config.en_train:
+        train_data = data_process.get_data('train')
+        dev_data = data_process.get_data('dev')
+
+
+
+    if config.en_test:
+        test_data = data_process.get_data('test')

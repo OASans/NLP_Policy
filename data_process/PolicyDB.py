@@ -14,7 +14,7 @@ import pandas as pd
 class DBConfig:
     def __init__(self):
         self.add_new_data_to_db = False
-        self.convert_db_to_dataset = False
+        self.convert_db_to_dataset = True
 
 
 class PolicyDB:
@@ -308,10 +308,13 @@ class DB2DataSet:
             os.remove(dataset_path)
 
         c = self.conn.cursor()
-        c.execute("""select * from annotated_sentence""")
+        c.execute("""select annotated_sentence.*, temp.sentence_num 
+        from annotated_sentence left outer join (
+        select count(sentence) as sentence_num, uid from annotated_sentence group by uid) as temp 
+        on annotated_sentence.uid=temp.uid""")
         values = c.fetchall()
 
-        keys = ['uid', 'sid', 'sentence', 'sentence_type']
+        keys = ['uid', 'sid', 'sentence', 'sentence_type', 'sentence_num']
         data = [dict(zip(keys, value)) for value in values]
 
         with open(dataset_path, 'w') as f:
@@ -485,9 +488,9 @@ if __name__ == '__main__':
 
     if config.convert_db_to_dataset:
         dataset_converter = DB2DataSet()
-        # dataset_converter.generate_sentence_classification_dataset()
+        dataset_converter.generate_sentence_classification_dataset()
         # dataset_converter.generate_entity_dataset()
         # dataset_converter.generate_entry_dataset()
 
-        dataset_converter.generate_all_datasets()
+        # dataset_converter.generate_all_datasets()
         dataset_converter.close_db()

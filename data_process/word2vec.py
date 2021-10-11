@@ -1,6 +1,7 @@
+import os
 import pickle
 
-ROOT_LOCAL_DATA = './pretrained/'
+ROOT_LOCAL_DATA = os.path.dirname(__file__) + '/pretrained/'
 
 
 def conv2pkl():
