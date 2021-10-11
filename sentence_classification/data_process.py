@@ -26,6 +26,7 @@ class DataProcessConfig:
         self.processed_data_path = os.path.join(os.getcwd(), 'data/')
         if not os.path.exists(self.processed_data_path):
             os.makedirs(self.processed_data_path)
+        self.total_path = os.path.join(self.processed_data_path, 'total.json')
         self.train_path = os.path.join(self.processed_data_path, 'train.json')
         self.dev_path = os.path.join(self.processed_data_path, 'dev.json')
         self.test_path = os.path.join(self.processed_data_path, 'test.json')
@@ -142,9 +143,12 @@ class DataProcess:
             norm_data.append(self._normalization(sample))
         norm_data = np.array(norm_data)
 
+
         # 划分数据集，存json
         train_data, dev_data, test_data = self.data_split(norm_data)
         label2idx, idx2label = self._label2idx()
+        with open(self.config.train_path, 'w') as f:
+            json.dump(norm_data.tolist(), f)
         with open(self.config.train_path, 'w') as f:
             json.dump(train_data.tolist(), f)
         with open(self.config.dev_path, 'w') as f:

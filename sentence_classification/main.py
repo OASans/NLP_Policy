@@ -1,4 +1,6 @@
 from data_process import DataProcessConfig, DataProcess
+from fitting import FittingConfig, ModelFitting
+from models import ModelE
 
 
 class Config:
@@ -16,19 +18,10 @@ class Config:
         self.data_process_config.preprocess = True if self.need_preprocess else False
 
         # fitting
-        self.batch_size = 10
-        self.epochs = 2 if self.debug_mode else 100
-        self.lr = 0.001
-        self.shuffle = True
-        self.early_stop = True
-        self.patience = 8
-        self.decay = 0.95
-        # fitting result
-        self.result_path = './result'
+        self.fitting_config = FittingConfig(self.unique)
 
         # models
-        self.dropout = 0.5
-        self.word_embedding_dim = 300
+        self.model = ModelE.xgboost
 
 
 if __name__ == '__main__':
@@ -41,8 +34,9 @@ if __name__ == '__main__':
     if config.en_train:
         train_data = data_process.get_data('train')
         dev_data = data_process.get_data('dev')
-
-
+        test_data = data_process.get_data('test')
+        train_inputs = {'model': config.model, 'train_data': train_data, 'dev_data': dev_data}
 
     if config.en_test:
         test_data = data_process.get_data('test')
+        test_inputs = {'model': config.model, 'test_data': test_data}
