@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn import metrics
 
 from NLP_Policy.data_process.word2vec import get_w2v_vector
 from models import ModelE, XGBoost
@@ -64,5 +64,8 @@ class ModelFitting:
         xgboost_clf = self.model(train_X, train_y)
         test_pred = xgboost_clf.predict(test_X)
 
-        print('accuracy_score: ', accuracy_score(test_y, test_pred))
-        print('f1_score: ', f1_score(test_y, test_pred, average='micro'))
+        print('accuracy_score: ', metrics.accuracy_score(test_y, test_pred))
+        print('f1_score: ', metrics.f1_score(test_y, test_pred, average='micro'))
+        print('recall_score:', metrics.recall_score(test_y, test_pred, average='micro'))
+        print('precision_score:', metrics.precision_score(test_y, test_pred, average='micro'))
+        print('confusion_metrics:', metrics.confusion_matrix(test_y, test_pred))
