@@ -30,7 +30,6 @@ class ModelFitting:
     def _get_X_y(self, data):
         X = np.zeros(shape=(data.shape[0], 302)).astype(float)
         for i in range(data.shape[0]):
-            print(i)
             sentence_vec = np.array([0.0] * 300)
             index_in_text = float(data[i]['sid'].split('_')[-1])
             sentence_num = float(data[i]['sentence_num'])
@@ -59,11 +58,11 @@ class ModelFitting:
 
         if model is ModelE.xgboost:
             train_X = np.vstack((train_X, dev_X))
-            train_y = np.vstack((train_y, dev_y))
+            train_y = np.hstack((train_y, dev_y))
             self.model = XGBoost(model_config=self.model_config)
 
         xgboost_clf = self.model(train_X, train_y)
-        test_pred = xgboost_clf(test_X)
+        test_pred = xgboost_clf.predict(test_X)
 
         print('accuracy_score: ', accuracy_score(test_y, test_pred))
-        print('f1_score: ', f1_score(test_y, test_pred, 'micro'))
+        print('f1_score: ', f1_score(test_y, test_pred, average='micro'))
