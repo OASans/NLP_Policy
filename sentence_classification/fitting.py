@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
+from sklearn.metrics import accuracy_score, f1_score
 
 from NLP_Policy.data_process.word2vec import get_w2v_vector
 from models import ModelE, XGBoost
@@ -49,15 +50,20 @@ class ModelFitting:
         model = train_inputs['model']
         train_data = train_inputs['train_data']
         dev_data = train_inputs['dev_data']
+        test_data = train_inputs['test_data']
         self.label2idx, self.idx2label = train_inputs['label2idx'], train_inputs['idx2label']
 
         train_X, train_y = self._get_X_y(train_data)
         dev_X, dev_y = self._get_X_y(dev_data)
+        test_X, test_y = self._get_X_y(test_data)
 
         if model is ModelE.xgboost:
+            train_X = np.vstack((train_X, dev_X))
+            train_y = np.vstack((train_y, dev_y))
             self.model = XGBoost(model_config=self.model_config)
 
         xgboost_clf = self.model(train_X, train_y)
+        test_pred = xgboost_clf(test_X)
 
-        print('test')
-        return 0
+        print('accuracy_score: ', accuracy_score(test_y, test_pred))
+        print('f1_score: ', f1_score(test_y, test_pred, 'micro'))

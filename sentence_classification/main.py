@@ -40,7 +40,8 @@ if __name__ == '__main__':
         print('training...')
         train_data = data_process.get_data('train')
         dev_data = data_process.get_data('dev')
-        train_inputs = {'model': config.model, 'train_data': train_data, 'dev_data': dev_data,
+        test_data = data_process.get_data('test')
+        train_inputs = {'model': config.model, 'train_data': train_data, 'dev_data': dev_data, 'test_data': test_data,
                         'label2idx': label2idx, 'idx2label': idx2label}
         model_fitting.train(train_inputs)
 
