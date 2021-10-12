@@ -1,16 +1,13 @@
 import os
+import pandas as pd
+import numpy as np
+
+from NLP_Policy.data_process.word2vec import get_w2v_vector
+from models import ModelE, XGBoost
 
 
 class FittingConfig:
     def __init__(self, unique):
-        self.processed_data_path = os.path.join(os.getcwd(), 'data/')
-        self.total_path = os.path.join(self.processed_data_path, 'total.json')
-        self.train_path = os.path.join(self.processed_data_path, 'train.json')
-        self.dev_path = os.path.join(self.processed_data_path, 'dev.json')
-        self.test_path = os.path.join(self.processed_data_path, 'test.json')
-        self.label2idx_path = os.path.join(self.processed_data_path, 'label2idx.json')
-        self.idx2label_path = os.path.join(self.processed_data_path, 'idx2label.json')
-
         self.result_data_path = os.path.join(os.getcwd(), 'result/')
         if not os.path.exists(self.result_data_path):
             os.makedirs(self.result_data_path)
@@ -18,9 +15,49 @@ class FittingConfig:
         self.result_data_path = os.path.join(self.result_data_path, 'acc_result_{}.json'.format(unique))
         self.result_pic_path = os.path.join(self.result_data_path, 'acc_pic_{}.png'.format(unique))
 
-        self.n_fold = 5
+        self.w2v = True
 
 
 class ModelFitting:
-    def __init__(self, config):
-        # TODO 
+    def __init__(self, config, model_config):
+        self.config = config
+        self.model_config = model_config
+        self.w2v_array = get_w2v_vector() if self.config.w2v else None
+        self.label2idx, self.idx2label = None, None
+        self.model = None
+
+    def _get_X_y(self, data):
+        X = np.zeros(shape=(data.shape[0], 302)).astype(float)
+        for i in range(data.shape[0]):
+            print(i)
+            sentence_vec = np.array([0.0] * 300)
+            index_in_text = float(data[i]['sid'].split('_')[-1])
+            sentence_num = float(data[i]['sentence_num'])
+            token_num = float(len(data[i]['lattice_token']))
+            for token in data[i]['lattice_token']:
+                sentence_vec = sentence_vec + np.array(self.w2v_array[token])
+            sentence_vec = sentence_vec / token_num if token_num != 0.0 else sentence_vec
+            sentence_vec = np.append(sentence_vec, index_in_text / sentence_num)
+            sentence_vec = np.append(sentence_vec, token_num)
+            X[i] = sentence_vec
+
+        data = pd.DataFrame(data.tolist())
+        y = np.array([self.label2idx[label] for label in data['sentence_type'].values])
+        return X, y
+
+    def train(self, train_inputs):
+        model = train_inputs['model']
+        train_data = train_inputs['train_data']
+        dev_data = train_inputs['dev_data']
+        self.label2idx, self.idx2label = train_inputs['label2idx'], train_inputs['idx2label']
+
+        train_X, train_y = self._get_X_y(train_data)
+        dev_X, dev_y = self._get_X_y(dev_data)
+
+        if model is ModelE.xgboost:
+            self.model = XGBoost(model_config=self.model_config)
+
+        xgboost_clf = self.model(train_X, train_y)
+
+        print('test')
+        return 0

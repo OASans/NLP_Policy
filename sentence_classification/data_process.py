@@ -7,7 +7,7 @@ import random
 import numpy as np
 import pandas as pd
 
-from NLP_Policy.data_process.word2vec import get_w2v_vocab, get_w2v_vector
+from NLP_Policy.data_process.word2vec import get_w2v_vocab
 
 
 
@@ -94,7 +94,7 @@ class DataProcess:
             lattice_word.sort(key=lambda x: len(x[0]))
             lattice_word.sort(key=lambda x: x[2])
 
-            return {'sid': sample['sid'], 'sentence': sample['sentence'], 'lattice': lattice_word,
+            return {'sid': sample['sid'], 'sentence': sample['sentence'], 'sentence_type': sample['sentence_type'], 'lattice': lattice_word,
                     'lattice_token': lattice_to_token(lattice_word), 'sentence_num': sample['sentence_num']}
         return _get_lattice_word(sample)
 
@@ -161,6 +161,14 @@ class DataProcess:
             json.dump(idx2label, f)
 
     def get_data(self, data_type):
+        if data_type == 'label':
+            path1 = self.config.label2idx_path
+            path2 = self.config.idx2label_path
+            with open(path1, 'r') as f:
+                label2idx = json.load(fp=f)
+            with open(path2, 'r') as f:
+                idx2label = json.load(fp=f)
+            return label2idx, idx2label
         if data_type == 'train':
             path = self.config.train_path
         elif data_type == 'dev':
