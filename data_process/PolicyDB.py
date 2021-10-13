@@ -378,8 +378,10 @@ class DB2DataSet:
 
         c = self.conn.cursor()
         c.execute(
-            """select entity.sid,entity.entity,entity.entity_type,annotated_sentence.sentence from entity 
-            left outer join annotated_sentence on entity.sid=annotated_sentence.sid""")
+            """select entity.sid,entity.entity,entity.entity_type,annotated_sentence.sentence,temp.sentence_num from entity 
+            left outer join annotated_sentence on entity.sid=annotated_sentence.sid
+            left outer join (select count(sentence) as sentence_num, uid from annotated_sentence group by uid) as temp 
+            on annotated_sentence.uid=temp.uid""")
         values = c.fetchall()  # sid, entity, entity_type, sentence
 
         legal_values_in_sentence = collections.defaultdict(list)
@@ -488,8 +490,8 @@ if __name__ == '__main__':
 
     if config.convert_db_to_dataset:
         dataset_converter = DB2DataSet()
-        dataset_converter.generate_sentence_classification_dataset()
-        # dataset_converter.generate_entity_dataset()
+        # dataset_converter.generate_sentence_classification_dataset()
+        dataset_converter.generate_entity_dataset()
         # dataset_converter.generate_entry_dataset()
 
         # dataset_converter.generate_all_datasets()

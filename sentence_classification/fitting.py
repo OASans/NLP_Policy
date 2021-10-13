@@ -69,3 +69,5 @@ class ModelFitting:
         print('recall_score:', metrics.recall_score(test_y, test_pred, average='micro'))
         print('precision_score:', metrics.precision_score(test_y, test_pred, average='micro'))
         print('confusion_metrics:', metrics.confusion_matrix(test_y, test_pred))
+
+        return

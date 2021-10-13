@@ -25,6 +25,7 @@ if __name__ == '__main__':
         data_process.preprocess()
 
     label2idx, idx2label = data_process.get_data('label')
+
     if config.en_train:
         print('training...')
         train_data = data_process.get_data('train')

@@ -4,6 +4,7 @@ import json
 import itertools
 import spacy
 import random
+import hanlp
 import numpy as np
 from spacy.tokens import Span
 from spacy.util import filter_spans
@@ -37,11 +38,17 @@ class DataProcess:
 
         if self.config.preprocess:
             self.spacy_nlp = spacy.blank("zh")
+            self.lattice_cutter = hanlp.load(hanlp.pretrained.mtl.CLOSE_TOK_POS_NER_SRL_DEP_SDP_CON_ELECTRA_SMALL_ZH)
+            self.stopwords = self._stopwordslist('../data_process/utils/cn_stopwords.txt')
 
     def _load_data(self, path):
         with open(path, 'r') as f:
             data = json.load(f)
         return data
+
+    def _stopwordslist(self, stop_word_path):
+        stopwords = [line.strip() for line in open(stop_word_path, encoding='UTF-8').readlines()]
+        return stopwords
 
     def _normalization(self, sample):
         def _get_bio(sentence, entity_list):
@@ -53,12 +60,41 @@ class DataProcess:
                     bio_label[i] = 'I-{}'.format(self.config.label_dict[entity[2]])
             return bio_label
 
+        def _get_lattice_word(sentence):
+            def is_not_stopword(word):
+                return True if word not in self.stopwords else False
+
+            def lattice_cut(text):
+                index = 0
+                word_list = []
+
+                cut_results = self.lattice_cutter(text)
+                for word in cut_results['tok/coarse']:
+                    word_len = len(word)
+                    if word_len > 1 and is_not_stopword(word):  # 去掉非全汉字的词
+                        word_list.append((word, index, index + word_len - 1))
+                    index += word_len
+                return word_list
+
+            # 分类任务中暂时先考虑一个分词工具
+            cut_func = [lattice_cut]
+            lattice_word = set()
+            for func in cut_func:
+                words = func(sentence)
+                lattice_word |= set(words)
+            lattice_word = [w for w in lattice_word]
+            lattice_word.sort(key=lambda x: len(x[0]))
+            lattice_word.sort(key=lambda x: x[2])
+            return lattice_word
+
         text = self.spacy_nlp(sample['sentence'])
         origin_spans = [Span(text, entity[2][0], entity[2][1] + 1, label=entity[1]) for entity in sample['entity_list']]
         filtered_spans = filter_spans(origin_spans)
         upmost_entities = [(s.start, s.end - 1, s.label_) for s in filtered_spans]
         bio_label = _get_bio(sample['sentence'], upmost_entities)
-        return {'sentence': sample['sentence'], 'entity_list': upmost_entities, 'bio_label': bio_label}
+        lattice_word = _get_lattice_word(sample['sentence'])
+        return {'sentence': sample['sentence'], 'entity_list': upmost_entities, 'bio_label': bio_label,
+                'lattice': lattice_word}
 
     def _data_split(self, total_data):
         """
