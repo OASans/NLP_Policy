@@ -1,14 +1,11 @@
 import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
-import re
 import json
 import hanlp
 import random
 import numpy as np
-import pandas as pd
 
 from NLP_Policy.data_process.word2vec import get_w2v_vocab
-
 
 
 class DataProcessConfig:

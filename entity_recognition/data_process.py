@@ -1,15 +1,11 @@
 import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
-import re
 import json
+import itertools
 import spacy
-import hanlp
 import random
 import numpy as np
-import pandas as pd
-
-from NLP_Policy.data_process.word2vec import get_w2v_vocab
-
+from spacy.tokens import Span
 from spacy.util import filter_spans
 
 
@@ -17,14 +13,13 @@ class DataProcessConfig:
     def __init__(self):
         self.preprocess = False
 
-        self.ner_labels = ['', '政策目标', '申请审核程序', '资金管理-资金来源', '资金管理-管理原则', '监管评估-监督管理',
-                       '监管评估-考核评估', '政策内容-人才培养', '政策内容-资金支持', '政策内容-技术支持', '政策内容-公共服务',
-                       '政策内容-组织建设', '政策内容-目标规划', '政策内容-法规管制', '政策内容-政策宣传', '政策内容-税收优惠',
-                       '政策内容-金融支持', '政策内容-政府采购', '政策内容-对外承包', '政策内容-公私合作', '政策内容-海外合作']
+        self.label_dict = {'发布地区': 'AREA', '制定部门': 'RELDE', '政策文号': 'NUMB', '政策名称': 'TITLE',
+                           '执行部门': 'EXECDE', '发布时间': 'RELT', '执行期限': 'VALIDT'}
+        self.ner_tagging = 'BIO'
         self.dev_rate = 0.2
         self.test_rate = 0.2
 
-        self.raw_data_path = '../data_process/datasets/sentence_classification.json'
+        self.raw_data_path = '../data_process/datasets/entity.json'
         self.processed_data_path = os.path.join(os.getcwd(), 'data/')
         if not os.path.exists(self.processed_data_path):
             os.makedirs(self.processed_data_path)
@@ -41,14 +36,7 @@ class DataProcess:
         self.config = config
 
         if self.config.preprocess:
-            self.word_w2v = get_w2v_vocab()
-            self.word_w2v = dict([(word, index) for index, word in enumerate(self.word_w2v)])
-            self.lattice_cutter = hanlp.load(hanlp.pretrained.mtl.CLOSE_TOK_POS_NER_SRL_DEP_SDP_CON_ELECTRA_SMALL_ZH)
-            self.stopwords = self._stopwordslist('../data_process/utils/cn_stopwords.txt')
-
-    def _stopwordslist(self, stop_word_path):
-        stopwords = [line.strip() for line in open(stop_word_path, encoding='UTF-8').readlines()]
-        return stopwords
+            self.spacy_nlp = spacy.blank("zh")
 
     def _load_data(self, path):
         with open(path, 'r') as f:
@@ -56,51 +44,23 @@ class DataProcess:
         return data
 
     def _normalization(self, sample):
-        def _get_lattice_word(sample):
-            def is_all_chinese(word_str):
-                for c in word_str:
-                    if not '\u4e00' <= c <= '\u9fa5':
-                        return False
-                return True
+        def _get_bio(sentence, entity_list):
+            sentence_len = len(sentence)
+            bio_label = ['O'] * sentence_len
+            for entity in entity_list:
+                bio_label[entity[0]] = 'B-{}'.format(self.config.label_dict[entity[2]])
+                for i in range(entity[0] + 1, entity[1] + 1):
+                    bio_label[i] = 'I-{}'.format(self.config.label_dict[entity[2]])
+            return bio_label
 
-            def is_not_stopword(word):
-                return True if word not in self.stopwords else False
+        text = self.spacy_nlp(sample['sentence'])
+        origin_spans = [Span(text, entity[2][0], entity[2][1] + 1, label=entity[1]) for entity in sample['entity_list']]
+        filtered_spans = filter_spans(origin_spans)
+        upmost_entities = [(s.start, s.end - 1, s.label_) for s in filtered_spans]
+        bio_label = _get_bio(sample['sentence'], upmost_entities)
+        return {'sentence': sample['sentence'], 'entity_list': upmost_entities, 'bio_label': bio_label}
 
-            def lattice_cut(text):
-                index = 0
-                word_list = []
-
-                cut_results = self.lattice_cutter(text)
-                for word in cut_results['tok/fine']:
-                    word_len = len(word)
-                    if word_len > 1 and is_all_chinese(word) and is_not_stopword(word):  # 去掉非全汉字的词
-                        word_list.append((word, index, index + word_len - 1))
-                    index += word_len
-                return word_list
-
-            def lattice_to_token(lattice_words):
-                lattice_tokens = []
-                for lword in lattice_words:
-                    if lword[0] in self.word_w2v:
-                        lword_index = self.word_w2v[lword[0]]
-                        lattice_tokens.append(lword_index)
-                return lattice_tokens
-
-            # 分类任务中暂时先考虑一个分词工具
-            cut_func = [lattice_cut]
-            lattice_word = set()
-            for func in cut_func:
-                words = func(sample['sentence'])
-                lattice_word |= set(words)
-            lattice_word = [w for w in lattice_word]
-            lattice_word.sort(key=lambda x: len(x[0]))
-            lattice_word.sort(key=lambda x: x[2])
-
-            return {'sid': sample['sid'], 'sentence': sample['sentence'], 'sentence_type': sample['sentence_type'], 'lattice': lattice_word,
-                    'lattice_token': lattice_to_token(lattice_word), 'sentence_num': sample['sentence_num']}
-        return _get_lattice_word(sample)
-
-    def data_split(self, total_data):
+    def _data_split(self, total_data):
         """
         randomly split data into train, dev, and test set
         """
@@ -132,9 +92,11 @@ class DataProcess:
         return train_data, dev_data, test_data
 
     def _label2idx(self):
-        label_num = len(self.config.labels)
-        label2idx = {self.config.labels[i]: i for i in range(label_num)}
-        idx2label = {i: self.config.labels[i] for i in range(label_num)}
+        cartesian = itertools.product(['B-', 'I-'], list(self.config.label_dict.values()))
+        labels = ['O'] + [''.join([label[0], label[1]]) for label in cartesian]
+        label_num = len(labels)
+        label2idx = {labels[i]: i for i in range(label_num)}
+        idx2label = {i: labels[i] for i in range(label_num)}
         return label2idx, idx2label
 
     def preprocess(self):
@@ -145,10 +107,11 @@ class DataProcess:
             norm_data.append(self._normalization(sample))
         norm_data = np.array(norm_data)
 
+        # 创建BIO标签映射
+        label2idx, idx2label = self._label2idx()
 
         # 划分数据集，存json
-        train_data, dev_data, test_data = self.data_split(norm_data)
-        label2idx, idx2label = self._label2idx()
+        train_data, dev_data, test_data = self._data_split(norm_data)
         with open(self.config.train_path, 'w') as f:
             json.dump(norm_data.tolist(), f)
         with open(self.config.train_path, 'w') as f:

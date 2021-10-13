@@ -8,6 +8,7 @@ data_process/notebooks/
 data_process/.DS_Store
 
 sentence_classification/data/
+entity_recognition/data/
 
 
 # =======================================
