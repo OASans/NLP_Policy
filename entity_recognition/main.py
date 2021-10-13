@@ -5,7 +5,7 @@ class Config:
     def __init__(self):
         # TODO: check these lines every running time
         self.use_cuda = False
-        self.need_preprocess = True
+        self.need_preprocess = False
         self.debug_mode = True
         self.en_train = True
         self.en_test = False
@@ -32,5 +32,3 @@ if __name__ == '__main__':
         dev_data = data_process.get_data('dev')
         test_data = data_process.get_data('test')
 
-        print('test')
-        # TODO: algorithm
