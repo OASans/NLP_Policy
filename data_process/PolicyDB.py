@@ -386,9 +386,11 @@ class DB2DataSet:
 
         legal_values_in_sentence = collections.defaultdict(list)
         sid2sentence = {}
+        sid2sentence_num = {}
         for i, value in enumerate(values):
             if value[0] not in sid2sentence:
                 sid2sentence[value[0]] = value[3]
+                sid2sentence_num[value[0]] = value[-1]
             # 发布时间由于使用excel，有比较多需要处理的地方
             if value[2] == '发布时间':
                 standard_time = date_standarder(value[1], value[3])
@@ -407,8 +409,8 @@ class DB2DataSet:
 
         legal_values = []
         for k, v in legal_values_in_sentence.items():
-            legal_values.append((k, sid2sentence[k], v))
-        keys = ['sid', 'sentence', 'entity_list']
+            legal_values.append((k, sid2sentence[k], sid2sentence_num[k], v))
+        keys = ['sid', 'sentence', 'sentence_num', 'entity_list']
         data = [dict(zip(keys, value)) for value in legal_values]
 
         with open(dataset_path, 'w') as f:

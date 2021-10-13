@@ -32,3 +32,5 @@ if __name__ == '__main__':
         dev_data = data_process.get_data('dev')
         test_data = data_process.get_data('test')
 
+        print('test')
+        # TODO: algorithm

@@ -93,8 +93,8 @@ class DataProcess:
         upmost_entities = [(s.start, s.end - 1, s.label_) for s in filtered_spans]
         bio_label = _get_bio(sample['sentence'], upmost_entities)
         lattice_word = _get_lattice_word(sample['sentence'])
-        return {'sentence': sample['sentence'], 'entity_list': upmost_entities, 'bio_label': bio_label,
-                'lattice': lattice_word}
+        return {'sid': sample['sid'], 'sentence': sample['sentence'], 'sentence_num': sample['sentence_num'],
+                'entity_list': upmost_entities, 'bio_label': bio_label, 'lattice': lattice_word}
 
     def _data_split(self, total_data):
         """
