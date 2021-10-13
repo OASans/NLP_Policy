@@ -16,7 +16,7 @@ class DataProcessConfig:
 
         self.label_dict = {'发布地区': 'AREA', '制定部门': 'RELDE', '政策文号': 'NUMB', '政策名称': 'TITLE',
                            '执行部门': 'EXECDE', '发布时间': 'RELT', '执行期限': 'VALIDT'}
-        self.ner_tagging = 'BIO'
+        self.ner_tagging = 'BIOES'
         self.dev_rate = 0.2
         self.test_rate = 0.2
 
@@ -51,14 +51,18 @@ class DataProcess:
         return stopwords
 
     def _normalization(self, sample):
-        def _get_bio(sentence, entity_list):
+        def _get_bioes(sentence, entity_list):
             sentence_len = len(sentence)
-            bio_label = ['O'] * sentence_len
+            bioes_label = ['O'] * sentence_len
             for entity in entity_list:
-                bio_label[entity[0]] = 'B-{}'.format(self.config.label_dict[entity[2]])
-                for i in range(entity[0] + 1, entity[1] + 1):
-                    bio_label[i] = 'I-{}'.format(self.config.label_dict[entity[2]])
-            return bio_label
+                if entity[0] == entity[1]:
+                    bioes_label[entity[0]] = 'S-{}'.format(self.config.label_dict[entity[2]])
+                    continue
+                bioes_label[entity[0]] = 'B-{}'.format(self.config.label_dict[entity[2]])
+                bioes_label[entity[1]] = 'E-{}'.format(self.config.label_dict[entity[2]])
+                for i in range(entity[0] + 1, entity[1]):
+                    bioes_label[i] = 'I-{}'.format(self.config.label_dict[entity[2]])
+            return bioes_label
 
         def _get_lattice_word(sentence):
             def is_not_stopword(word):
@@ -91,10 +95,10 @@ class DataProcess:
         origin_spans = [Span(text, entity[2][0], entity[2][1] + 1, label=entity[1]) for entity in sample['entity_list']]
         filtered_spans = filter_spans(origin_spans)
         upmost_entities = [(s.start, s.end - 1, s.label_) for s in filtered_spans]
-        bio_label = _get_bio(sample['sentence'], upmost_entities)
+        bioes_label = _get_bioes(sample['sentence'], upmost_entities)
         lattice_word = _get_lattice_word(sample['sentence'])
         return {'sid': sample['sid'], 'sentence': sample['sentence'], 'sentence_num': sample['sentence_num'],
-                'entity_list': upmost_entities, 'bio_label': bio_label, 'lattice': lattice_word}
+                'entity_list': upmost_entities, 'bioes_label': bioes_label, 'lattice': lattice_word}
 
     def _data_split(self, total_data):
         """
@@ -128,7 +132,7 @@ class DataProcess:
         return train_data, dev_data, test_data
 
     def _label2idx(self):
-        cartesian = itertools.product(['B-', 'I-'], list(self.config.label_dict.values()))
+        cartesian = itertools.product(['B-', 'I-', 'E-', 'S-'], list(self.config.label_dict.values()))
         labels = ['O'] + [''.join([label[0], label[1]]) for label in cartesian]
         label_num = len(labels)
         label2idx = {labels[i]: i for i in range(label_num)}
@@ -143,7 +147,7 @@ class DataProcess:
             norm_data.append(self._normalization(sample))
         norm_data = np.array(norm_data)
 
-        # 创建BIO标签映射
+        # 创建BIOES标签映射
         label2idx, idx2label = self._label2idx()
 
         # 划分数据集，存json
