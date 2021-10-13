@@ -14,6 +14,7 @@ class Config:
         # data process
         self.data_process_config = DataProcessConfig()
         self.data_process_config.preprocess = True if self.need_preprocess else False
+        self.data_process_config.debug_mode = True if self.debug_mode else False
 
 
 if __name__ == '__main__':
@@ -32,3 +33,4 @@ if __name__ == '__main__':
         dev_data = data_process.get_data('dev')
         test_data = data_process.get_data('test')
 
+        print('todo')

@@ -1,6 +1,7 @@
 import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 import json
+import copy
 import itertools
 import spacy
 import random
@@ -8,18 +9,23 @@ import hanlp
 import numpy as np
 from spacy.tokens import Span
 from spacy.util import filter_spans
+from torch.utils.data import Dataset
+
+from NLP_Policy.data_process.word2vec import get_w2v_vocab
 
 
 class DataProcessConfig:
     def __init__(self):
         self.preprocess = False
+        self.debug_mode = False
+        self.dev_rate = 0.2
+        self.test_rate = 0.2
+        self.max_len = 512
 
+        # fixed
         self.label_dict = {'发布地区': 'AREA', '制定部门': 'RELDE', '政策文号': 'NUMB', '政策名称': 'TITLE',
                            '执行部门': 'EXECDE', '发布时间': 'RELT', '执行期限': 'VALIDT'}
         self.ner_tagging = 'BIOES'
-        self.dev_rate = 0.2
-        self.test_rate = 0.2
-
         self.raw_data_path = '../data_process/datasets/entity.json'
         self.processed_data_path = os.path.join(os.getcwd(), 'data/')
         if not os.path.exists(self.processed_data_path):
@@ -32,6 +38,21 @@ class DataProcessConfig:
         self.idx2label_path = os.path.join(self.processed_data_path, 'idx2label.json')
 
 
+class EntityDataSet(Dataset):
+    def __init__(self, data, debug_mode):
+        self.data = data
+        if debug_mode:
+            self.len = 100 if len(self.data) > 100 else len(self.data)
+        else:
+            self.len = len(self.data)
+
+    def __len__(self):
+        return self.len
+
+    def __getitem__(self, index):
+        return self.data[index]
+
+
 class DataProcess:
     def __init__(self, config):
         self.config = config
@@ -39,6 +60,8 @@ class DataProcess:
         if self.config.preprocess:
             self.spacy_nlp = spacy.blank("zh")
             self.lattice_cutter = hanlp.load(hanlp.pretrained.mtl.CLOSE_TOK_POS_NER_SRL_DEP_SDP_CON_ELECTRA_SMALL_ZH)
+            self.word_w2v = get_w2v_vocab()
+            self.word_w2v = dict([(word, index) for index, word in enumerate(self.word_w2v)])
             self.stopwords = self._stopwordslist('../data_process/utils/cn_stopwords.txt')
 
     def _load_data(self, path):
@@ -70,35 +93,105 @@ class DataProcess:
 
             def lattice_cut(text):
                 index = 0
-                word_list = []
+                coarse_word_list = []
+                fine_word_list = []
 
                 cut_results = self.lattice_cutter(text)
                 for word in cut_results['tok/coarse']:
                     word_len = len(word)
-                    if word_len > 1 and is_not_stopword(word):  # 去掉非全汉字的词
-                        word_list.append((word, index, index + word_len - 1))
+                    if word_len > 1 and is_not_stopword(word):
+                        coarse_word_list.append((word, index, index + word_len - 1))
                     index += word_len
-                return word_list
+                for word in cut_results['tok/fine']:
+                    word_len = len(word)
+                    if word_len > 1 and is_not_stopword(word):
+                        fine_word_list.append((word, index, index + word_len - 1))
+                    index += word_len
+                return coarse_word_list, fine_word_list
 
-            # 分类任务中暂时先考虑一个分词工具
+            def adjust_lattice(lattice_word):
+                lattice_word = [w for w in lattice_word]
+                lattice_word.sort(key=lambda x: len(x[0]))
+                lattice_word.sort(key=lambda x: x[2])
+                return lattice_word
+
+            # 暂时先考虑一个分词工具
             cut_func = [lattice_cut]
-            lattice_word = set()
+            coarse_lattice_word = set()
+            fine_lattice_word = set()
             for func in cut_func:
-                words = func(sentence)
-                lattice_word |= set(words)
-            lattice_word = [w for w in lattice_word]
-            lattice_word.sort(key=lambda x: len(x[0]))
-            lattice_word.sort(key=lambda x: x[2])
-            return lattice_word
+                coarse_words, fine_words = func(sentence)
+                coarse_lattice_word |= set(coarse_words)
+                fine_lattice_word |= set(fine_words)
+            coarse_lattice_word = adjust_lattice(coarse_lattice_word)
+            fine_lattice_word = adjust_lattice(fine_lattice_word)
+            return coarse_lattice_word, fine_lattice_word
+
+        # 先不切句子
+        # def _split_text(sample):
+        #
+        #     def split_by_len(sample_len):
+        #         if len(sample_len['sentence']) <= self.config.max_len:
+        #             return [sample_len]
+        #         out_samples = []
+        #         right_limit = 0
+        #         rest_text = sample_len['sentence']
+        #         while len(rest_text) > self.config.max_len:
+        #             new_sample = copy.deepcopy(sample_len)
+        #             new_sample['entities'] = []
+        #             for char_index in range(self.config.max_len - 1, -1, -1):
+        #                 if (rest_text[char_index] in ('，', '。', '!', '?')) or char_index == 0:
+        #                     if char_index == 0:
+        #                         char_index = self.config.max_len - 1
+        #                     left_limit = right_limit
+        #                     right_limit += char_index + 1
+        #                     new_sample['sentence'] = rest_text[:char_index + 1]
+        #
+        #                     for entity in sample_len['entity_list']:
+        #                         if entity[0] >= left_limit and entity[1] < right_limit:
+        #                             new_entity = (entity[0] - left_limit, entity[1] - left_limit, entity[2])
+        #                             new_sample['entity_list'].append(new_entity)
+        #
+        #                     rest_text = rest_text[char_index + 1:]
+        #                     out_samples.append(new_sample)
+        #                     break
+        #         else:
+        #             left_limit = right_limit
+        #             new_sample = copy.deepcopy(sample_len)
+        #             new_sample['sentence'] = rest_text
+        #             new_sample['entity_list'] = []
+        #             for entity in sample_len['entity_list']:
+        #                 if entity[0] >= left_limit:
+        #                     new_entity = (entity[0] - left_limit, entity[1] - left_limit, entity[2])
+        #                     new_sample['entity_list'].append(new_entity)
+        #             out_samples.append(new_sample)
+        #         return out_samples
+        #
+        #     new_samples = split_by_len(sample)
+        #     new_samples.sort(key=lambda x: x['sub_id'])
+        #     for index, ppp in enumerate(new_samples):
+        #         ppp['sub_id'] = index
+        #     return new_samples
+
+        def _convert_to_token(fine_lattice):
+            lattice_tokens = []
+            for lword in fine_lattice:
+                if lword[0] in self.word_w2v:
+                    lword_index = self.word_w2v[lword[0]]
+                    lattice_tokens.append(lword_index)
+
+            return lattice_tokens
 
         text = self.spacy_nlp(sample['sentence'])
         origin_spans = [Span(text, entity[2][0], entity[2][1] + 1, label=entity[1]) for entity in sample['entity_list']]
         filtered_spans = filter_spans(origin_spans)
         upmost_entities = [(s.start, s.end - 1, s.label_) for s in filtered_spans]
         bioes_label = _get_bioes(sample['sentence'], upmost_entities)
-        lattice_word = _get_lattice_word(sample['sentence'])
+        coarse_lattice, fine_lattice = _get_lattice_word(sample['sentence'])
+        lattice_tokens = _convert_to_token(fine_lattice)
         return {'sid': sample['sid'], 'sentence': sample['sentence'], 'sentence_num': sample['sentence_num'],
-                'entity_list': upmost_entities, 'bioes_label': bioes_label, 'lattice': lattice_word}
+                'entity_list': upmost_entities, 'bioes_label': bioes_label, 'coarse_lattice': coarse_lattice,
+                'lattice_tokens': lattice_tokens}
 
     def _data_split(self, total_data):
         """
@@ -152,7 +245,7 @@ class DataProcess:
 
         # 划分数据集，存json
         train_data, dev_data, test_data = self._data_split(norm_data)
-        with open(self.config.train_path, 'w') as f:
+        with open(self.config.total_path, 'w') as f:
             json.dump(norm_data.tolist(), f)
         with open(self.config.train_path, 'w') as f:
             json.dump(train_data.tolist(), f)
@@ -182,5 +275,5 @@ class DataProcess:
             path = self.config.test_path
         with open(path, 'r') as f:
             data = np.array(json.load(fp=f))
-        return data
+        return EntityDataSet(data, self.config.debug_mode)
 
