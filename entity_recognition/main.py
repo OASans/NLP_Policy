@@ -1,5 +1,6 @@
-from data_process import DataProcessConfig, DataProcess
-from fitting import FittingConfig, ModelFitting
+from NLP_Policy.entity_recognition.data_process import DataProcessConfig, DataProcess
+from NLP_Policy.entity_recognition.fitting import FittingConfig, ModelFitting
+from NLP_Policy.entity_recognition.models import ModelConfig, Bert_Crf
 
 
 class Config:
@@ -20,6 +21,11 @@ class Config:
         # fitting
         self.fitting_config = FittingConfig(self.unique)
         self.fitting_config.use_cuda = True if self.use_cuda else False
+        self.fitting_config.num_tags = self.data_process_config.num_tags
+
+        # models
+        self.model_config = ModelConfig()
+        self.model_config.num_tags = self.data_process_config.num_tags
 
 
 if __name__ == '__main__':
@@ -31,11 +37,14 @@ if __name__ == '__main__':
         data_process.preprocess()
 
     label2idx, idx2label = data_process.get_data('label')
+    model_fitting = ModelFitting(config.fitting_config)
 
+    model = Bert_Crf(config.model_config)
     if config.en_train:
         print('training...')
         train_data = data_process.get_data('train')
         dev_data = data_process.get_data('dev')
         test_data = data_process.get_data('test')
-
-        print('todo')
+        train_inputs = {'model': model, 'train_data': train_data, 'dev_data': dev_data, 'label2idx': label2idx,
+                        'idx2label': idx2label}
+        model_fitting.train(train_inputs)

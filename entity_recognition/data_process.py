@@ -12,6 +12,7 @@ from spacy.util import filter_spans
 from torch.utils.data import Dataset
 
 from NLP_Policy.data_process.word2vec import get_w2v_vocab
+from NLP_Policy.utils.tokenizer import MyBertTokenizer
 
 
 class DataProcessConfig:
@@ -21,11 +22,13 @@ class DataProcessConfig:
         self.dev_rate = 0.2
         self.test_rate = 0.2
         self.max_len = 512
+        self.ner_tagging = 'BIOES'
+        self.num_tags = 29 if self.ner_tagging == 'BIOES' else None
 
         # fixed
+        self.ptm_model = 'hfl/chinese-roberta-wwm-ext-large'
         self.label_dict = {'发布地区': 'AREA', '制定部门': 'RELDE', '政策文号': 'NUMB', '政策名称': 'TITLE',
                            '执行部门': 'EXECDE', '发布时间': 'RELT', '执行期限': 'VALIDT'}
-        self.ner_tagging = 'BIOES'
         self.raw_data_path = '../data_process/datasets/entity.json'
         self.processed_data_path = os.path.join(os.getcwd(), 'data/')
         if not os.path.exists(self.processed_data_path):
@@ -38,24 +41,11 @@ class DataProcessConfig:
         self.idx2label_path = os.path.join(self.processed_data_path, 'idx2label.json')
 
 
-class EntityDataSet(Dataset):
-    def __init__(self, data, debug_mode):
-        self.data = data
-        if debug_mode:
-            self.len = 100 if len(self.data) > 100 else len(self.data)
-        else:
-            self.len = len(self.data)
-
-    def __len__(self):
-        return self.len
-
-    def __getitem__(self, index):
-        return self.data[index]
-
-
 class DataProcess:
     def __init__(self, config):
         self.config = config
+        self.token_max_len = self.config.max_len  # token的最大长度
+        self.max_len = self.config.max_len - 2  # 实际最大长度
 
         if self.config.preprocess:
             self.spacy_nlp = spacy.blank("zh")
@@ -63,6 +53,7 @@ class DataProcess:
             self.word_w2v = get_w2v_vocab()
             self.word_w2v = dict([(word, index) for index, word in enumerate(self.word_w2v)])
             self.stopwords = self._stopwordslist('../data_process/utils/cn_stopwords.txt')
+            self.tokenizer = MyBertTokenizer.from_pretrained(config.ptm_model)
 
     def _load_data(self, path):
         with open(path, 'r') as f:
@@ -74,34 +65,21 @@ class DataProcess:
         return stopwords
 
     def _normalization(self, sample):
-        def _get_bioes(sentence, entity_list):
-            sentence_len = len(sentence)
-            bioes_label = ['O'] * sentence_len
-            for entity in entity_list:
-                if entity[0] == entity[1]:
-                    bioes_label[entity[0]] = 'S-{}'.format(self.config.label_dict[entity[2]])
-                    continue
-                bioes_label[entity[0]] = 'B-{}'.format(self.config.label_dict[entity[2]])
-                bioes_label[entity[1]] = 'E-{}'.format(self.config.label_dict[entity[2]])
-                for i in range(entity[0] + 1, entity[1]):
-                    bioes_label[i] = 'I-{}'.format(self.config.label_dict[entity[2]])
-            return bioes_label
-
-        def _get_lattice_word(sentence):
+        def _get_lattice_word(sentence, raw2decode):
             def is_not_stopword(word):
                 return True if word not in self.stopwords else False
 
             def lattice_cut(text):
-                index = 0
                 coarse_word_list = []
                 fine_word_list = []
-
                 cut_results = self.lattice_cutter(text)
+                index = 0
                 for word in cut_results['tok/coarse']:
                     word_len = len(word)
                     if word_len > 1 and is_not_stopword(word):
                         coarse_word_list.append((word, index, index + word_len - 1))
                     index += word_len
+                index = 0
                 for word in cut_results['tok/fine']:
                     word_len = len(word)
                     if word_len > 1 and is_not_stopword(word):
@@ -110,7 +88,7 @@ class DataProcess:
                 return coarse_word_list, fine_word_list
 
             def adjust_lattice(lattice_word):
-                lattice_word = [w for w in lattice_word]
+                lattice_word = [[w[0], raw2decode[w[1]], raw2decode[w[2]]] for w in lattice_word]
                 lattice_word.sort(key=lambda x: len(x[0]))
                 lattice_word.sort(key=lambda x: x[2])
                 return lattice_word
@@ -173,25 +151,32 @@ class DataProcess:
         #         ppp['sub_id'] = index
         #     return new_samples
 
-        def _convert_to_token(fine_lattice):
+        def _convert_lattice_to_token(fine_lattice):
             lattice_tokens = []
             for lword in fine_lattice:
                 if lword[0] in self.word_w2v:
                     lword_index = self.word_w2v[lword[0]]
-                    lattice_tokens.append(lword_index)
-
+                    lattice_tokens.append([lword_index, lword[1], lword[2]])
             return lattice_tokens
+
+        def _convert_sentence_to_token(sentence):
+            tokens = self.tokenizer.my_encode(sentence, max_length=self.token_max_len, add_special_tokens=True,
+                                            truncation=True)
+            decode2raw, raw2decode = self.tokenizer.get_token_map(sentence)
+            return tokens, decode2raw, raw2decode
+
+        tokens, decode2raw, raw2decode = _convert_sentence_to_token(sample['sentence'])
 
         text = self.spacy_nlp(sample['sentence'])
         origin_spans = [Span(text, entity[2][0], entity[2][1] + 1, label=entity[1]) for entity in sample['entity_list']]
         filtered_spans = filter_spans(origin_spans)
-        upmost_entities = [(s.start, s.end - 1, s.label_) for s in filtered_spans]
-        bioes_label = _get_bioes(sample['sentence'], upmost_entities)
-        coarse_lattice, fine_lattice = _get_lattice_word(sample['sentence'])
-        lattice_tokens = _convert_to_token(fine_lattice)
-        return {'sid': sample['sid'], 'sentence': sample['sentence'], 'sentence_num': sample['sentence_num'],
-                'entity_list': upmost_entities, 'bioes_label': bioes_label, 'coarse_lattice': coarse_lattice,
-                'lattice_tokens': lattice_tokens}
+        upmost_entities = [(raw2decode[s.start], raw2decode[s.end - 1], self.config.label_dict[s.label_]) for s in filtered_spans]
+
+        coarse_lattice, fine_lattice = _get_lattice_word(sample['sentence'], raw2decode)
+        lattice_tokens = _convert_lattice_to_token(fine_lattice)
+        return {'sid': sample['sid'], 'sentence_num': sample['sentence_num'], 'sentence_tokens': tokens,
+                'raw2decode': raw2decode, 'decode2raw': decode2raw, 'entity_list': upmost_entities,
+                'coarse_lattice': coarse_lattice, 'lattice_tokens': lattice_tokens}
 
     def _data_split(self, total_data):
         """
@@ -277,3 +262,17 @@ class DataProcess:
             data = np.array(json.load(fp=f))
         return EntityDataSet(data, self.config.debug_mode)
 
+
+class EntityDataSet(Dataset):
+    def __init__(self, data, debug_mode):
+        self.data = data
+        if debug_mode:
+            self.len = 100 if len(self.data) > 100 else len(self.data)
+        else:
+            self.len = len(self.data)
+
+    def __len__(self):
+        return self.len
+
+    def __getitem__(self, index):
+        return self.data[index]

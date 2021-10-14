@@ -10,9 +10,9 @@ class ModelConfig:
 
         # bert
         self.ptm_model = 'hfl/chinese-roberta-wwm-ext-large'
+        self.ptm_feat_size = 1024
 
         # crf
-        self.in_feat_size = None
         self.num_tags = None
 
 
@@ -25,16 +25,11 @@ class Bert(nn.Module):
         self.bert = BertModel.from_pretrained(config.ptm_model, output_hidden_states=True)
         self.params['ptm'].extend([p for p in self.bert.parameters()])
 
-        # self.dropout_rate = config.dropout_rate
-        # self.dropout = nn.Dropout(self.dropout_rate)
-
     def get_params(self):
         return self.params
 
     def forward(self, inputs):
-        text_embedded = self.bert(inputs['X'], inputs['X_mask'])['last_hidden_state']
-        text_embedded = text_embedded[:, 1:-1, :]  # TODO: 为啥来着
-        # output = self.dropout(text_embedded)
+        text_embedded = self.bert(inputs['sentence_tokens'], inputs['sentence_masks'])['last_hidden_state']
         return text_embedded
 
 
@@ -48,7 +43,7 @@ class Crf(nn.Module):
         self.crf = CRF(config.num_tags, batch_first=True)
         self.params['crf'].extend([p for p in self.crf.parameters()])
 
-        self.emission_linear = nn.Linear(config.in_feat_size, config.num_tags)
+        self.emission_linear = nn.Linear(config.ptm_feat_size, config.num_tags)
         self.params['other'].extend([p for p in self.emission_linear.parameters()])
 
     def get_params(self):
@@ -58,35 +53,22 @@ class Crf(nn.Module):
         """
         emission: B T L F
         """
-        emission_shape = emission.size()
-        mask = mask.unsqueeze(dim=1)
-        mask = mask.repeat(1, emission_shape[1], 1)
-        mask = mask.reshape([-1, mask.size(2)])
-        emission = emission.reshape([-1, emission_shape[2], emission.size(3)])
+        emission_shape = emission.shape
         result = self.crf.decode(emission, mask)
-        result = result.reshape([-1, emission_shape[1], mask.size(1)])
+        result = result.squeeze(dim=0)
         result = result.tolist()
         return result
 
     def cal_emission(self, text_vec):
         emission = self.emission_linear(text_vec)
-        emission = emission.reshape(list(emission.size()[:2]) + [1, self.num_tags])
-        emission = emission.permute([0, 2, 1, 3])  # B L T F -> B T L F
         return emission
 
-    def cal_loss(self, preds, targets, mask):
+    def cal_loss(self, preds, y_true, mask):
         emission = preds['emission']
-        y_true = targets['y_true']
-        mask = mask.unsqueeze(dim=1)
-        mask = mask.repeat(1, emission.size(1), 1)
-        mask = mask.reshape([-1, mask.size(2)])
-        emission = emission.reshape([-1, emission.size(2), emission.size(3)])  # B*T L F
-        y_true = y_true.reshape([-1, y_true.size(2)])
         _loss = -self.crf(emission, y_true, mask, reduction='token_mean')
         return _loss
 
-    def forward(self, inputs, en_pred=True):
-        text_vec, mask = inputs['text_vec'], inputs['mask']
+    def forward(self, text_vec, mask, en_pred=True):
         emission = self.cal_emission(text_vec)
         if en_pred:
             pred = self.decode(emission, mask)
@@ -100,14 +82,28 @@ class Crf(nn.Module):
 class Bert_Crf(nn.Module):
     def __init__(self, config):
         super(Bert_Crf, self).__init__()
+        self.params = {}
+        self.layer_list = []
+
         self.bert = Bert(config)
+        self.layer_list.append(self.bert)
+
         self.crf = Crf(config)
+        self.layer_list.append(self.crf)
+
+    def get_params(self):
+        if not self.params:
+            for layer in self.layer_list:
+                for key, value in layer.get_params().items():
+                    if key not in self.params:
+                        self.params[key] = []
+                    self.params[key].extend(value)
+        return self.params
 
     def cal_loss(self, preds, targets, mask):
         return self.crf.cal_loss(preds, targets, mask)
 
     def forward(self, inputs):
-        sentence_tokens, sentence_masks = inputs['sentence_tokens'], inputs['sentence_masks']
-        text_embedded = self.bert(sentence_tokens)
-        output = self.crf(text_embedded)
+        text_embedded = self.bert(inputs)
+        output = self.crf(text_embedded, inputs['sentence_masks'])
         return output

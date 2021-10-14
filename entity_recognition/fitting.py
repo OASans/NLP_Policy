@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
 from NLP_Policy.data_process.word2vec import get_w2v_vector
-from NLP_Policy.utils.tokenizer import MyBertTokenizer
 
 
 class FittingConfig:
@@ -17,13 +16,13 @@ class FittingConfig:
         self.w2v = False
         self.batch_size = 16
         self.epochs = 100
-        self.lr = {'ptm': 0.00003, 'crf': 0.005, 'others': 0.00003}
+        self.lr = {'ptm': 0.00003, 'crf': 0.005, 'others': 0.0001}
         self.early_stop = True
         self.patience = 8
         self.decay = 0.95
+        self.num_tags = None
 
         # fixed
-        self.ptm_model = 'hfl/chinese-roberta-wwm-ext-large'
         self.result_data_path = os.path.join(os.getcwd(), 'result/')
         if not os.path.exists(self.result_data_path):
             os.makedirs(self.result_data_path)
@@ -44,7 +43,6 @@ class ModelFitting:
         self.patience = config.patience
         self.decay = config.decay
 
-        self.tokenizer = MyBertTokenizer.from_pretrained(config.ptm_model)
         self.w2v_array = get_w2v_vector() if config.w2v else None
         self.label2idx, self.idx2label = None, None
         self.model = None
@@ -53,21 +51,23 @@ class ModelFitting:
         self.acc_result = {'dev_p': [], 'dev_r': [], 'dev_f1': [], 'dev_loss': []}
 
     def collate_fn_test(self, batch):
-        X = []
+        # 暂未考虑处理词向量信息，先做character-level
+        text = []
+        text_mask = []
         max_len = 0
         min_len = 9999
         for sample in batch:
-            sample_len = len(sample['X'])
+            sample_len = len(sample['sentence_tokens'])
             max_len = max_len if max_len > sample_len else sample_len
             min_len = min_len if min_len < sample_len else sample_len
-            X.append(sample['X'])
-        encoded = self.tokenizer(X, padding=True, max_length=max_len)
-        X_id = encoded['input_ids']
-        X_mask = encoded['attention_mask']
-        # 转成tensor
-        X_id = torch.tensor(X_id).long()
-        X_mask = torch.tensor(X_mask).float()
-        result = {'X': [X_id, True], 'X_mask': [X_mask, True]}
+        for sample in batch:
+            text_length = len(sample['sentence_tokens'])
+            text.append(sample['sentence_tokens'] + [0] * (max_len - text_length))
+            text_mask.append([1] * text_length + [0] * (max_len - text_length))
+
+        text = torch.tensor(text)
+        text_mask = torch.tensor(text_mask).float()
+        result = {'sentence_tokens': [text, True], 'sentence_masks': [text_mask, True]}
         if self.use_cuda:
             result = dict([(key, value[0].cuda() if value[1] else value[0]) for key, value in result.items()])
         else:
@@ -75,14 +75,27 @@ class ModelFitting:
         return result
 
     def collate_fn_train(self, batch):
+        def _get_bioes(sentence_len, entity_list):
+            bioes_label = ['O'] * sentence_len
+            for entity in entity_list:
+                if entity[0] == entity[1]:
+                    bioes_label[entity[0]] = 'S-{}'.format(entity[2])
+                    continue
+                bioes_label[entity[0]] = 'B-{}'.format(entity[2])
+                bioes_label[entity[1]] = 'E-{}'.format(entity[2])
+                for i in range(entity[0] + 1, entity[1]):
+                    bioes_label[i] = 'I-{}'.format(entity[2])
+            bioes_label = [self.label2idx[label] for label in bioes_label]
+            return bioes_label
+
         inputs = self.collate_fn_test(batch)
         y_true = []
-        max_len = inputs['X'].shape[1] - 2
+        max_len = inputs['sentence_tokens'].shape[1]
         for sample in batch:
-            sample_len = len(sample['y'])
-            y_idx = [self.vocab2idx[word] if word in self.vocab2idx else self.vocab2idx['unk'] for word in sample['y']]
-            y_idx.extend([0] * (max_len - sample_len))
-            y_true.append(y_idx)
+            text_length = len(sample['sentence_tokens'])
+            bioes_label = _get_bioes(text_length, sample['entity_list'])
+            bioes_label = bioes_label + [0] * (max_len - text_length)
+            y_true.append(bioes_label)
         y_true = torch.tensor(y_true).long()
         if self.use_cuda:
             y_true = y_true.cuda()
@@ -139,9 +152,8 @@ class ModelFitting:
             for step, (inputs, targets) in enumerate(train_dataloader):
                 optimizer.zero_grad()
                 self.model.train()
-                y_hat = self.model(inputs)
-
-                loss = self.cal_loss(y_hat, targets)
+                preds = self.model(inputs)
+                loss = self.model.cal_loss(preds, targets, inputs['sentence_masks'])
                 loss.backward()
                 optimizer.step()
                 print('epoch: {}, step: {}/{}, loss: {:.6f}, lr: {:.6f}'.format(epoch, step, train_steps, loss,
