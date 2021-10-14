@@ -1,4 +1,5 @@
 from data_process import DataProcessConfig, DataProcess
+from fitting import FittingConfig, ModelFitting
 
 
 class Config:
@@ -15,6 +16,10 @@ class Config:
         self.data_process_config = DataProcessConfig()
         self.data_process_config.preprocess = True if self.need_preprocess else False
         self.data_process_config.debug_mode = True if self.debug_mode else False
+
+        # fitting
+        self.fitting_config = FittingConfig(self.unique)
+        self.fitting_config.use_cuda = True if self.use_cuda else False
 
 
 if __name__ == '__main__':
