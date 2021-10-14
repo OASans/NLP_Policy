@@ -88,12 +88,21 @@ class ModelFitting:
             bioes_label = [self.label2idx[label] for label in bioes_label]
             return bioes_label
 
+        def _get_bio(sentence_len, entity_list):
+            bioes_label = ['O'] * sentence_len
+            for entity in entity_list:
+                bioes_label[entity[0]] = 'B-{}'.format(entity[2])
+                for i in range(entity[0] + 1, entity[1] + 1):
+                    bioes_label[i] = 'I-{}'.format(entity[2])
+            bioes_label = [self.label2idx[label] for label in bioes_label]
+            return bioes_label
+
         inputs = self.collate_fn_test(batch)
         y_true = []
         max_len = inputs['sentence_tokens'].shape[1]
         for sample in batch:
             text_length = len(sample['sentence_tokens'])
-            bioes_label = _get_bioes(text_length, sample['entity_list'])
+            bioes_label = _get_bio(text_length, sample['entity_list'])
             bioes_label = bioes_label + [0] * (max_len - text_length)
             y_true.append(bioes_label)
         y_true = torch.tensor(y_true).long()
@@ -107,27 +116,111 @@ class ModelFitting:
         elif mode == 'test':
             return self.collate_fn_test
 
-    def cal_loss(self, y_hat, y_true):
-        return self.model.cal_loss(y_hat, y_true)
-
     def save_model(self, model):
         print('==================================saving best model...==================================')
         torch.save(model.state_dict(), self.config.result_model_path)
 
-    def save_plotting_data(self):
-        with open(self.config.result_data_path, 'w') as outfile:
-            json.dump(self.config.result_data_path, outfile)
-
-    def _plotting_data(self, dev_loss):
+    def _plotting_data(self, dev_p, dev_r, dev_f1, dev_loss):
+        self.acc_result['dev_p'].append(dev_p)
+        self.acc_result['dev_r'].append(dev_r)
+        self.acc_result['dev_f1'].append(dev_f1)
         self.acc_result['dev_loss'].append(dev_loss)
 
+    def save_plotting_data(self):
+        with open(self.config.result_data_path, 'w') as outfile:
+            json.dump(self.acc_result, outfile)
+
     def plot_acc(self):
-        epochs = np.arange(0, len(self.acc_result['dev_loss']))
+        epochs = np.arange(0, len(self.acc_result['dev_f1']))
+        plt.plot(epochs, self.acc_result['dev_p'], 'steelblue', label='dev_p')
+        plt.plot(epochs, self.acc_result['dev_r'], 'darkolivegreen', label='dev_r')
+        plt.plot(epochs, self.acc_result['dev_f1'], 'salmon', label='dev_f1')
         plt.plot(epochs, self.acc_result['dev_loss'], 'darkorange', label='dev_loss')
         plt.legend()
         plt.savefig(self.config.result_pic_path)
         plt.show()
         self.save_plotting_data()
+
+    def get_chunks(self, seq):
+        # TODO: 感觉这个怪怪的，但是网上好多人都用这个，我感觉不太对
+        """Given a sequence of tags, group entities and their position
+
+        Args:
+            seq: [4, 4, 0, 0, ...] sequence of labels
+            tags: dict["O"] = 4
+
+        Returns:
+            list of (chunk_type, chunk_start, chunk_end)
+
+        Example:
+            seq = [4, 5, 0, 3]
+            tags = {"B-PER": 4, "I-PER": 5, "B-LOC": 3}
+            result = [("PER", 0, 2), ("LOC", 3, 4)]
+
+        """
+
+        def get_chunk_type(tok):
+            tag_name = self.idx2label[str(tok)]
+            tag_class = tag_name.split('-')[0]
+            tag_type = tag_name.split('-')[-1]
+            return tag_class, tag_type
+
+        # We assume by default the tags lie outside a named entity
+        default = self.label2idx['O']
+        chunks = []
+        chunk_type, chunk_start = None, None
+        for i, tok in enumerate(seq):
+            if tok == -1:
+                break
+            # End of a chunk 1
+            if tok == default and chunk_type is not None:
+                # Add a chunk.
+                chunk = (chunk_type, chunk_start, i)
+                chunks.append(chunk)
+                chunk_type, chunk_start = None, None
+            # End of a chunk + start of a chunk!
+            elif tok != default:
+                tok_chunk_class, tok_chunk_type = get_chunk_type(tok)
+                if chunk_type is None:
+                    # Initialize chunk for each entity
+                    chunk_type, chunk_start = tok_chunk_type, i
+                elif tok_chunk_type != chunk_type or tok_chunk_class == "B":
+                    # If chunk class is B, i.e., its a beginning of a new named entity
+                    # or, if the chunk type is different from the previous one, then we
+                    # start labelling it as a new entity
+                    chunk = (chunk_type, chunk_start, i)
+                    chunks.append(chunk)
+                    chunk_type, chunk_start = tok_chunk_type, i
+                else:
+                    pass
+        # end condition
+        if chunk_type is not None:
+            chunk = (chunk_type, chunk_start, len(seq))
+            chunks.append(chunk)
+
+        return chunks
+
+    def evaluate(self, pred, y_true):
+        batch_size = len(pred)
+        y_true = y_true.numpy()
+        correct_preds, total_correct, total_preds = 0., 0., 0.
+
+        for i in range(batch_size):
+            ground_truth_id = y_true[i]
+            predicted_id = pred[i]
+            lab_chunks = set(self.get_chunks(ground_truth_id))
+            lab_pred_chunks = set(self.get_chunks(predicted_id))
+
+            # Updating the count variables
+            correct_preds += len(lab_chunks & lab_pred_chunks)
+            total_preds += len(lab_pred_chunks)
+            total_correct += len(lab_chunks)
+
+        # Calculating the F1-Score
+        p = correct_preds / total_preds if correct_preds > 0 else 0
+        r = correct_preds / total_correct if correct_preds > 0 else 0
+        new_F1 = 2 * p * r / (p + r) if correct_preds > 0 else 0
+        return p, r, new_F1
 
     def train(self, train_inputs):
         self.model = train_inputs['model'] if not self.use_cuda else train_inputs['model'].cuda()
@@ -156,11 +249,14 @@ class ModelFitting:
                 loss = self.model.cal_loss(preds, targets, inputs['sentence_masks'])
                 loss.backward()
                 optimizer.step()
-                print('epoch: {}, step: {}/{}, loss: {:.6f}, lr: {:.6f}'.format(epoch, step, train_steps, loss,
-                                                                                optimizer.param_groups[0]['lr']))
+                with torch.no_grad():
+                    P, R, F1 = self.evaluate(preds['pred'], targets)
+                    print('epoch: {}, step: {}/{}, loss: {:.6f}, P: {:.4f}, R: {:.4f}, F1: {:.4f}'.format(
+                        epoch, step, train_steps, loss, P, R, F1))
+                print('lr: {:.6f}'.format(optimizer.param_groups[0]['lr']))
             # dev
             with torch.no_grad():
-                dev_inputs = {'model': self.model, 'data': dev_data}
+                dev_inputs = {'data': dev_data}
                 eval_result = self.eval(dev_inputs)
                 if eval_result['loss'] < best_dev_loss:
                     best_dev_loss = eval_result['loss']
@@ -171,26 +267,31 @@ class ModelFitting:
                         print('===============================early stopping...===============================')
                         print('best dev loss: ', best_dev_loss)
                         break
-            self._plotting_data(eval_result['loss'].item())
+            self._plotting_data(eval_result['p'], eval_result['r'], eval_result['f1'], eval_result['loss'].item())
             scheduler.step()
 
     def eval(self, dev_inputs):
-        model = dev_inputs['model']
         dev_data = dev_inputs['data']
         dev_dataloader = DataLoader(dev_data, batch_size=self.batch_size, collate_fn=self.get_collate_fn('dev'))
         result = {}
-        total_loss = 0
-        batch_num = 0
+        metrics_data = {'loss': 0, 'p': 0, 'r': 0, 'f1': 0, 'batch_num': 0}
         with torch.no_grad():
             print('==================================evaluating dev data...==================================')
             for step, (inputs, targets) in enumerate(dev_dataloader):
-                model.eval()
-                y_hat = model(inputs)
-                loss = self.cal_loss(y_hat, targets)
-                total_loss += loss.float()
-                batch_num += 1
-            result['loss'] = total_loss / batch_num
-            print('loss: {:.6f}'.format(result['loss']))
+                self.model.eval()
+                preds = self.model(inputs)
+                loss = self.model.cal_loss(preds, targets, inputs['sentence_masks'])
+                P, R, F1 = self.evaluate(preds['pred'], targets)
+                metrics_data['loss'] += loss.cpu().float()
+                metrics_data['p'] += P
+                metrics_data['r'] += R
+                metrics_data['f1'] += F1
+                metrics_data['batch_num'] += 1
+            result['loss'] = metrics_data['loss'] / metrics_data['batch_num']
+            result['p'] = metrics_data['p'] / metrics_data['batch_num']
+            result['r'] = metrics_data['r'] / metrics_data['batch_num']
+            result['f1'] = metrics_data['f1'] / metrics_data['batch_num']
+            print('loss: {:.6f}, p: {:.4f}, r: {:.4f}, f1: {:.4f}'.format(result['loss'], result['p'], result['r'], result['f1']))
         return result
 
     def test(self, test_inputs):
@@ -199,6 +300,6 @@ class ModelFitting:
         model.load_state_dict(torch.load(self.config.result_model_path))
         if self.use_cuda:
             model = model.cuda()
-        test_inputs['model'] = model
+        self.model = model
         result = self.eval(test_inputs)
         return result

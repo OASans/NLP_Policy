@@ -8,7 +8,9 @@ data_process/notebooks/
 data_process/.DS_Store
 
 sentence_classification/data/
+sentence_classification/result/
 entity_recognition/data/
+entity_recognition/result/
 
 
 # =======================================

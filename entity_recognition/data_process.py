@@ -22,13 +22,15 @@ class DataProcessConfig:
         self.dev_rate = 0.2
         self.test_rate = 0.2
         self.max_len = 512
-        self.ner_tagging = 'BIOES'
-        self.num_tags = 29 if self.ner_tagging == 'BIOES' else None
+        self.ner_tagging = 'BIO'
 
         # fixed
         self.ptm_model = 'hfl/chinese-roberta-wwm-ext-large'
         self.label_dict = {'发布地区': 'AREA', '制定部门': 'RELDE', '政策文号': 'NUMB', '政策名称': 'TITLE',
                            '执行部门': 'EXECDE', '发布时间': 'RELT', '执行期限': 'VALIDT'}
+        self.num_types = len(self.label_dict)
+        self.num_tags = (4 * self.num_types + 1) if self.ner_tagging == 'BIOES' else (
+            (2 * self.num_types + 1) if self.ner_tagging == 'BIO' else None)
         self.raw_data_path = '../data_process/datasets/entity.json'
         self.processed_data_path = os.path.join(os.getcwd(), 'data/')
         if not os.path.exists(self.processed_data_path):
@@ -210,7 +212,9 @@ class DataProcess:
         return train_data, dev_data, test_data
 
     def _label2idx(self):
-        cartesian = itertools.product(['B-', 'I-', 'E-', 'S-'], list(self.config.label_dict.values()))
+        tags = ['B-', 'I-', 'E-', 'S-'] if self.config.ner_tagging == 'BIOES' else (
+            ['B-', 'I-'] if self.config.ner_tagging == 'BIO' else None)
+        cartesian = itertools.product(tags, list(self.config.label_dict.values()))
         labels = ['O'] + [''.join([label[0], label[1]]) for label in cartesian]
         label_num = len(labels)
         label2idx = {labels[i]: i for i in range(label_num)}
