@@ -54,7 +54,7 @@ if __name__ == '__main__':
         model_fitting.plot_acc()
 
     if config.en_test:
-        print('training...')
+        print('testing...')
         test_data = data_process.get_data('test')
         test_inputs = {'model': model, 'test_data': test_data, 'label2idx': label2idx, 'idx2label': idx2label}
         model_fitting.test(test_inputs)
