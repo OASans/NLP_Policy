@@ -27,7 +27,7 @@ class FittingConfig:
         if not os.path.exists(self.result_data_path):
             os.makedirs(self.result_data_path)
         self.result_model_path = os.path.join(self.result_data_path, 'best_model_{}.pt'.format(unique))
-        self.result_data_path = os.path.join(self.result_data_path, 'acc_result_{}.json'.format(unique))
+        self.result_acc_path = os.path.join(self.result_data_path, 'acc_result_{}.json'.format(unique))
         self.result_pic_path = os.path.join(self.result_data_path, 'acc_pic_{}.png'.format(unique))
 
 
@@ -127,7 +127,7 @@ class ModelFitting:
         self.acc_result['dev_loss'].append(dev_loss)
 
     def save_plotting_data(self):
-        with open(self.config.result_data_path, 'w') as outfile:
+        with open(self.config.result_acc_path, 'w') as outfile:
             json.dump(self.acc_result, outfile)
 
     def plot_acc(self):
