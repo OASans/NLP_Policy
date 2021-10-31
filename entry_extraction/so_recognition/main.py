@@ -1,6 +1,6 @@
-from NLP_Policy.entry_extraction.data_process import DataProcessConfig, DataProcess
-from NLP_Policy.entry_extraction.fitting import FittingConfig, ModelFitting
-from NLP_Policy.entry_extraction.models import ModelConfig, Bert_Crf
+from entry_extraction.so_recognition.data_process import DataProcessConfig, DataProcess
+from entry_extraction.so_recognition.fitting import FittingConfig, ModelFitting
+from entry_extraction.so_recognition.models import ModelConfig, Bert_Crf
 
 
 class Config:
@@ -9,8 +9,9 @@ class Config:
         self.use_cuda = False
         self.need_preprocess = False
         self.debug_mode = False
-        self.en_train = True
+        self.en_train = False
         self.en_test = False
+        self.en_pred_so_entity = True
         self.unique = 'testing'
 
         # data process
@@ -45,7 +46,6 @@ if __name__ == '__main__':
         print('training...')
         train_data = data_process.get_data('train')
         dev_data = data_process.get_data('dev')
-        test_data = data_process.get_data('test')
         train_inputs = {'model': model, 'train_data': train_data, 'dev_data': dev_data, 'label2idx': label2idx,
                         'idx2label': idx2label}
         model_fitting.train(train_inputs)
@@ -58,3 +58,11 @@ if __name__ == '__main__':
         test_data = data_process.get_data('test')
         test_inputs = {'model': model, 'test_data': test_data, 'label2idx': label2idx, 'idx2label': idx2label}
         model_fitting.test(test_inputs)
+
+    if config.en_pred_so_entity:
+        print('getting chunks...')
+        data_type = ['train', 'dev', 'test']
+        for dt in data_type:
+            data = data_process.get_data(dt)
+            inputs = {'model': model, 'data': data, 'label2idx': label2idx, 'idx2label': idx2label}
+            model_fitting.get_pred_entity(inputs, dt)

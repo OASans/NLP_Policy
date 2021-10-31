@@ -29,6 +29,9 @@ class FittingConfig:
         self.result_model_path = os.path.join(self.result_data_path, 'best_model_{}.pt'.format(unique))
         self.result_acc_path = os.path.join(self.result_data_path, 'acc_result_{}.json'.format(unique))
         self.result_pic_path = os.path.join(self.result_data_path, 'acc_pic_{}.png'.format(unique))
+        self.entity_result_path = os.path.join(os.getcwd(), '../entity_result/')
+        if not os.path.exists(self.entity_result_path):
+            os.makedirs(self.entity_result_path)
 
 
 class ModelFitting:
@@ -102,7 +105,7 @@ class ModelFitting:
         max_len = inputs['sentence_tokens'].shape[1]
         for sample in batch:
             text_length = len(sample['sentence_tokens'])
-            bioes_label = _get_bio(text_length, sample['entry_list'])
+            bioes_label = _get_bio(text_length, sample['entry_list'])  # TODO: 改名
             bioes_label = bioes_label + [0] * (max_len - text_length)
             y_true.append(bioes_label)
         y_true = torch.tensor(y_true).long()
@@ -110,11 +113,25 @@ class ModelFitting:
             y_true = y_true.cuda()
         return inputs, y_true
 
+    def collate_fn_entity(self, batch):
+        inputs, targets = self.collate_fn_train(batch)
+        sids = []
+        sentence_tokens = []
+        entities = []
+        for sample in batch:
+            sids.append(sample['sid'])
+            sentence_tokens.append(sample['sentence_tokens'])
+            entities.append(sample['entry_list'])  # TODO: 改名成entity
+        return inputs, {'sids': sids, 'sentence_tokens': sentence_tokens, 'entities': entities,
+                        'targets': targets.numpy().tolist()}
+
     def get_collate_fn(self, mode='train'):
         if mode == 'train' or mode == 'dev':
             return self.collate_fn_train
         elif mode == 'test':
             return self.collate_fn_test
+        elif mode == 'entity':
+            return self.collate_fn_entity
 
     def save_model(self, model):
         print('==================================saving best model...==================================')
@@ -297,9 +314,37 @@ class ModelFitting:
     def test(self, test_inputs):
         print('==================================evaluating test data...==================================')
         model = test_inputs['model']
+        self.label2idx, self.idx2label = test_inputs['label2idx'], test_inputs['idx2label']
+        test_data = test_inputs['test_data']
         model.load_state_dict(torch.load(self.config.result_model_path))
         if self.use_cuda:
             model = model.cuda()
         self.model = model
-        result = self.eval(test_inputs)
+        inputs = {'data': test_data}
+        result = self.eval(inputs)
         return result
+
+    def get_pred_entity(self, inputs, data_type='test'):
+        model = inputs['model']
+        self.label2idx, self.idx2label = inputs['label2idx'], inputs['idx2label']
+        data = inputs['data']
+        model.load_state_dict(torch.load(self.config.result_model_path))
+        if self.use_cuda:
+            model = model.cuda()
+        self.model = model
+
+        dataloader = DataLoader(data, batch_size=self.batch_size, collate_fn=self.get_collate_fn('entity'))
+        results = []
+        with torch.no_grad():
+            for step, (inputs, targets) in enumerate(dataloader):
+                self.model.eval()
+                preds = self.model(inputs)
+                for i, pred in enumerate(preds['pred']):
+                    pred_entity = self.get_chunks(pred)
+                    true_entity = self.get_chunks(targets['targets'][i])
+                    res = {'sid': targets['sids'][i], 'true_entity': true_entity, 'pred_entity': pred_entity}
+                    results.append(res)
+        result_path = os.path.join(self.config.entity_result_path, '{}_entity.json'.format(data_type))
+        with open(result_path, 'w') as f:
+            json.dump(results, f)
+        return results

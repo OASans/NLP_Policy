@@ -25,7 +25,7 @@ class DataProcessConfig:
         self.ner_tagging = 'BIO'
 
         # fixed
-        self.raw_data_path = '../data_process/datasets/entry.json'
+        self.raw_data_path = '../../data_process/datasets/entry.json'
         self.ptm_model = 'hfl/chinese-roberta-wwm-ext-large'
         self.processed_data_path = os.path.join(os.getcwd(), 'data/')
         if not os.path.exists(self.processed_data_path):
@@ -58,7 +58,7 @@ class DataProcess:
             self.lattice_cutter = hanlp.load(hanlp.pretrained.mtl.CLOSE_TOK_POS_NER_SRL_DEP_SDP_CON_ELECTRA_SMALL_ZH)
             self.word_w2v = get_w2v_vocab()
             self.word_w2v = dict([(word, index) for index, word in enumerate(self.word_w2v)])
-            self.stopwords = self._stopwordslist('../data_process/utils/cn_stopwords.txt')
+            self.stopwords = self._stopwordslist('../../data_process/utils/cn_stopwords.txt')
             self.tokenizer = MyBertTokenizer.from_pretrained(config.ptm_model)
 
     def _load_data(self, path):
@@ -189,7 +189,7 @@ class DataProcess:
         coarse_lattice, fine_lattice = _get_lattice_word(sample['sentence'], raw2decode)
         lattice_tokens = _convert_lattice_to_token(fine_lattice)
         return {'sid': sample['sid'], 'sentence_tokens': tokens, 'raw2decode': raw2decode, 'decode2raw': decode2raw,
-                'entry_list': upmost_entities, 'coarse_lattice': coarse_lattice, 'lattice_tokens': lattice_tokens}
+                'entity_list': upmost_entities, 'coarse_lattice': coarse_lattice, 'lattice_tokens': lattice_tokens}
 
     def _data_split(self, total_data):
         """
@@ -275,10 +275,10 @@ class DataProcess:
             path = self.config.test_path
         with open(path, 'r') as f:
             data = np.array(json.load(fp=f))
-        return EntryDataSet(data, self.config.debug_mode)
+        return SOEntityDataSet(data, self.config.debug_mode)
 
 
-class EntryDataSet(Dataset):
+class SOEntityDataSet(Dataset):
     def __init__(self, data, debug_mode):
         self.data = data
         if debug_mode:

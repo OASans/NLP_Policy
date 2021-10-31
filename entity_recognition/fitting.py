@@ -202,7 +202,7 @@ class ModelFitting:
 
     def evaluate(self, pred, y_true):
         batch_size = len(pred)
-        y_true = y_true.numpy()
+        y_true = y_true.cpu().numpy() if self.use_cuda else y_true.numpy()
         correct_preds, total_correct, total_preds = 0., 0., 0.
 
         for i in range(batch_size):
@@ -269,6 +269,8 @@ class ModelFitting:
                         break
             self._plotting_data(eval_result['p'], eval_result['r'], eval_result['f1'], eval_result['loss'].item())
             scheduler.step()
+            if self.use_cuda:
+                torch.cuda.empty_cache()
 
     def eval(self, dev_inputs):
         dev_data = dev_inputs['data']
