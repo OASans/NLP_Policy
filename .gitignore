@@ -11,6 +11,8 @@ sentence_classification/data/
 sentence_classification/result/
 entity_recognition/data/
 entity_recognition/result/
+entry_extraction/data/
+entry_extraction/result/
 
 
 # =======================================
