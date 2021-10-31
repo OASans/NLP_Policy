@@ -493,7 +493,7 @@ if __name__ == '__main__':
     if config.convert_db_to_dataset:
         dataset_converter = DB2DataSet()
         # dataset_converter.generate_sentence_classification_dataset()
-        dataset_converter.generate_entity_dataset()
+        # dataset_converter.generate_entity_dataset()
         # dataset_converter.generate_entry_dataset()
 
         # dataset_converter.generate_all_datasets()

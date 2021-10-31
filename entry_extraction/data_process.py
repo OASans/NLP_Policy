@@ -25,12 +25,8 @@ class DataProcessConfig:
         self.ner_tagging = 'BIO'
 
         # fixed
+        self.raw_data_path = '../data_process/datasets/entry.json'
         self.ptm_model = 'hfl/chinese-roberta-wwm-ext-large'
-        self.label_dict = {'等于': 'EQUAL', '不等于': 'UNEQUAL', '小于': 'SMALLER', '大于': 'BIGGER',
-                           '包含': 'CONTAIN', '不包含': 'UNCONTAIN', '符合': 'ACCORD', '是': 'IS', '否': 'ISNOT', }
-        self.num_types = len(self.label_dict)
-            (2 * self.num_types + 1) if self.ner_tagging == 'BIO' else None)
-        self.raw_data_path = '../data_process/datasets/entity.json'
         self.processed_data_path = os.path.join(os.getcwd(), 'data/')
         if not os.path.exists(self.processed_data_path):
             os.makedirs(self.processed_data_path)
@@ -40,6 +36,15 @@ class DataProcessConfig:
         self.test_path = os.path.join(self.processed_data_path, 'test.json')
         self.label2idx_path = os.path.join(self.processed_data_path, 'label2idx.json')
         self.idx2label_path = os.path.join(self.processed_data_path, 'idx2label.json')
+
+        # entity span
+        self.span_list = {'subject', 'object'}
+        self.num_span_types = len(self.span_list)
+        self.num_tags = (4 * self.num_span_types + 1) if self.ner_tagging == 'BIOES' else (
+            (2 * self.num_span_types + 1) if self.ner_tagging == 'BIO' else None)
+        # relation
+        self.relation_dict = {'等于': 'EQUAL', '不等于': 'UNEQUAL', '小于': 'SMALLER', '大于': 'BIGGER',
+                              '包含': 'CONTAIN', '不包含': 'UNCONTAIN', '符合': 'ACCORD', '是': 'IS', '否': 'ISNOT', }
 
 
 class DataProcess:
@@ -166,6 +171,9 @@ class DataProcess:
             decode2raw, raw2decode = self.tokenizer.get_token_map(sentence)
             return tokens, decode2raw, raw2decode
 
+        # 去掉subject-object对不完整的三元组
+        # sample = _drop_incomplete_triple(sample)
+
         tokens, decode2raw, raw2decode = _convert_sentence_to_token(sample['sentence'])
 
         text = self.spacy_nlp(sample['sentence'])
@@ -263,10 +271,10 @@ class DataProcess:
             path = self.config.test_path
         with open(path, 'r') as f:
             data = np.array(json.load(fp=f))
-        return EntityDataSet(data, self.config.debug_mode)
+        return EntryDataSet(data, self.config.debug_mode)
 
 
-class EntityDataSet(Dataset):
+class EntryDataSet(Dataset):
     def __init__(self, data, debug_mode):
         self.data = data
         if debug_mode:

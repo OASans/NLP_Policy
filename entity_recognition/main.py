@@ -8,7 +8,7 @@ class Config:
         # TODO: check these lines every running time
         self.use_cuda = False
         self.need_preprocess = False
-        self.debug_mode = True
+        self.debug_mode = False
         self.en_train = True
         self.en_test = False
         self.unique = 'testing'
