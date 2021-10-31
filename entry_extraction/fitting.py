@@ -102,7 +102,7 @@ class ModelFitting:
         max_len = inputs['sentence_tokens'].shape[1]
         for sample in batch:
             text_length = len(sample['sentence_tokens'])
-            bioes_label = _get_bio(text_length, sample['entity_list'])
+            bioes_label = _get_bio(text_length, sample['entry_list'])
             bioes_label = bioes_label + [0] * (max_len - text_length)
             y_true.append(bioes_label)
         y_true = torch.tensor(y_true).long()

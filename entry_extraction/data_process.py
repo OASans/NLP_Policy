@@ -188,9 +188,8 @@ class DataProcess:
 
         coarse_lattice, fine_lattice = _get_lattice_word(sample['sentence'], raw2decode)
         lattice_tokens = _convert_lattice_to_token(fine_lattice)
-        return {'sid': sample['sid'], 'sentence_num': sample['sentence_num'], 'sentence_tokens': tokens,
-                'raw2decode': raw2decode, 'decode2raw': decode2raw, 'entity_list': upmost_entities,
-                'coarse_lattice': coarse_lattice, 'lattice_tokens': lattice_tokens}
+        return {'sid': sample['sid'], 'sentence_tokens': tokens, 'raw2decode': raw2decode, 'decode2raw': decode2raw,
+                'entry_list': upmost_entities, 'coarse_lattice': coarse_lattice, 'lattice_tokens': lattice_tokens}
 
     def _data_split(self, total_data):
         """
@@ -226,7 +225,7 @@ class DataProcess:
     def _label2idx(self):
         tags = ['B-', 'I-', 'E-', 'S-'] if self.config.ner_tagging == 'BIOES' else (
             ['B-', 'I-'] if self.config.ner_tagging == 'BIO' else None)
-        cartesian = itertools.product(tags, list(self.config.label_dict.values()))
+        cartesian = itertools.product(tags, self.config.span_list)
         labels = ['O'] + [''.join([label[0], label[1]]) for label in cartesian]
         label_num = len(labels)
         label2idx = {labels[i]: i for i in range(label_num)}
