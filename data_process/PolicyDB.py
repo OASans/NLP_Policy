@@ -425,7 +425,15 @@ class DB2DataSet:
         sid, sentence,
         entry_list:[(eid, entry_type, var, relation, field, var_context, field_context, var_span, field_span)]
         """
-        def find_span(context, sentence):
+        def find_span(origin, context, sentence):
+            if origin in sentence:
+                start = sentence.find(origin)
+                end = start + len(origin) - 1
+                substring = sentence[start:end + 1]
+                if substring != origin:
+                    print('substring not match:', origin, sentence)
+                    return None
+                return start, end
             if context == '':
                 return -1, -1
             else:
@@ -454,9 +462,9 @@ class DB2DataSet:
         for i, value in enumerate(values):
             if value[0] not in sid2sentence:
                 sid2sentence[value[0]] = value[-1]
-            var_span = find_span(value[6], value[-1])
+            var_span = find_span(value[3], value[6], value[-1])
             if not var_span: continue
-            field_span = find_span(value[7], value[-1])
+            field_span = find_span(value[5], value[7], value[-1])
             if not field_span: continue
             legal_values_in_sentence[value[0]].append(
                 (value[1], value[2], value[3], value[4], value[5], value[6], value[7], var_span, field_span))
@@ -494,7 +502,7 @@ if __name__ == '__main__':
         dataset_converter = DB2DataSet()
         # dataset_converter.generate_sentence_classification_dataset()
         # dataset_converter.generate_entity_dataset()
-        # dataset_converter.generate_entry_dataset()
+        dataset_converter.generate_entry_dataset()
 
         # dataset_converter.generate_all_datasets()
         dataset_converter.close_db()

@@ -38,7 +38,7 @@ class DataProcessConfig:
         self.idx2label_path = os.path.join(self.processed_data_path, 'idx2label.json')
 
         # entity span
-        self.span_list = {'subject', 'object'}
+        self.span_list = ['subject', 'object']
         self.num_span_types = len(self.span_list)
         self.num_tags = (4 * self.num_span_types + 1) if self.ner_tagging == 'BIOES' else (
             (2 * self.num_span_types + 1) if self.ner_tagging == 'BIO' else None)
@@ -177,9 +177,14 @@ class DataProcess:
         tokens, decode2raw, raw2decode = _convert_sentence_to_token(sample['sentence'])
 
         text = self.spacy_nlp(sample['sentence'])
-        origin_spans = [Span(text, entity[2][0], entity[2][1] + 1, label=entity[1]) for entity in sample['entity_list']]
+        origin_spans = []
+        for entry in sample['entry_list']:
+            if entry[-1][0] != -1:
+                origin_spans.append(Span(text, entry[-1][0], entry[-1][1] + 1, label='object'))
+            if entry[-2][0] != -1:
+                origin_spans.append(Span(text, entry[-2][0], entry[-2][1] + 1, label='subject'))
         filtered_spans = filter_spans(origin_spans)
-        upmost_entities = [(raw2decode[s.start], raw2decode[s.end - 1], self.config.label_dict[s.label_]) for s in filtered_spans]
+        upmost_entities = [(raw2decode[s.start], raw2decode[s.end - 1], s.label_) for s in filtered_spans]
 
         coarse_lattice, fine_lattice = _get_lattice_word(sample['sentence'], raw2decode)
         lattice_tokens = _convert_lattice_to_token(fine_lattice)
