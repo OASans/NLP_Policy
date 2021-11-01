@@ -1,3 +1,7 @@
+import sys
+sys.path.append('/remote-home/aqshi/NLP_Policy/NLP_Policy')
+sys.path.append('/remote-home/aqshi/NLP_Policy')
+
 import collections
 import os
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
@@ -40,6 +44,7 @@ class DataProcessConfig:
         # relation
         self.relation_dict = {'等于': 'EQUAL', '不等于': 'UNEQUAL', '小于': 'SMALLER', '大于': 'BIGGER', '包含': 'CONTAIN',
                               '不包含': 'UNCONTAIN', '符合': 'ACCORD', '是': 'IS', '否': 'ISNOT', '': 'NOREL'}
+        self.num_tags = len(self.relation_dict)
 
 
 class DataProcess:
@@ -111,9 +116,6 @@ class DataProcess:
             decode2raw, raw2decode = self.tokenizer.get_token_map(sentence)
             return tokens, decode2raw, raw2decode
 
-        # 去掉subject-object对不完整的三元组
-        # sample = _drop_incomplete_triple(sample)
-
         tokens, decode2raw, raw2decode = _convert_sentence_to_token(sample['sentence'])
 
         text = self.spacy_nlp(sample['sentence'])
@@ -123,26 +125,32 @@ class DataProcess:
         relation_dict = {}
         object_dict = {}
         for entry in sample['entry_list']:
-            if entry[-1][0] != -1 and entry[-2][0] != -1:
+            # 去掉subject-object对不完整的三元组
+            if entry[-1][0] != -1 and entry[-2][0] != -1 and entry[3] in self.config.relation_dict:
                 subject = Span(text, entry[-2][0], entry[-2][1] + 1, label='subject')
                 object = Span(text, entry[-1][0], entry[-1][1] + 1, label='object')
                 origin_spans.append(object)
                 origin_spans.append(subject)
                 origin_subjects.append(subject)
                 origin_objects.append(object)
-                relation_dict[subject] = entry[-4]
+                relation_dict[subject] = entry[3]
                 object_dict[subject] = object
+        # 去掉所有有重叠的span
         filtered_spans = filter_spans(origin_spans)
         legal_subjects = [s for s in filtered_spans if s in origin_subjects]
         legal_objects = [s for s in filtered_spans if s in origin_objects]
 
         legal_spos = []
         for subject in legal_subjects:
-            object = object_dict[subject]
-            if object in legal_objects:
-                legal_spos.append({'s': (raw2decode[subject.start], raw2decode[subject.end - 1]),
-                                   'p': relation_dict[subject],
-                                   'o': (raw2decode[object.start], raw2decode[object.end - 1])})
+            for object in legal_objects:
+                if object in legal_objects and object == object_dict[subject]:
+                    legal_spos.append({'s': (raw2decode[subject.start], raw2decode[subject.end - 1]),
+                                       'p': self.config.relation_dict[relation_dict[subject]],
+                                       'o': (raw2decode[object.start], raw2decode[object.end - 1])})
+                else:
+                    legal_spos.append({'s': (raw2decode[subject.start], raw2decode[subject.end - 1]),
+                                       'p': self.config.relation_dict[''],
+                                       'o': (raw2decode[object.start], raw2decode[object.end - 1])})
 
         new_samples = []
         for i, spo in enumerate(legal_spos):
