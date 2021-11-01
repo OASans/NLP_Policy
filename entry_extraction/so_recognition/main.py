@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+import sys
+sys.path.append('/remote-home/aqshi/NLP_Policy/NLP_Policy')
+sys.path.append('/remote-home/aqshi/NLP_Policy')
+
 from entry_extraction.so_recognition.data_process import DataProcessConfig, DataProcess
 from entry_extraction.so_recognition.fitting import FittingConfig, ModelFitting
 from entry_extraction.so_recognition.models import ModelConfig, Bert_Crf
@@ -6,12 +11,12 @@ from entry_extraction.so_recognition.models import ModelConfig, Bert_Crf
 class Config:
     def __init__(self):
         # TODO: check these lines every running time
-        self.use_cuda = False
+        self.use_cuda = True
         self.need_preprocess = False
         self.debug_mode = False
-        self.en_train = False
+        self.en_train = True
         self.en_test = False
-        self.en_pred_so_entity = True
+        self.en_pred_so_entity = False
         self.unique = 'testing'
 
         # data process

@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import sys
+sys.path.append('/remote-home/aqshi/NLP_Policy/NLP_Policy')
+sys.path.append('/remote-home/aqshi/NLP_Policy')
 import torch.nn as nn
 from transformers import BertModel
 from pytorchcrf import CRF

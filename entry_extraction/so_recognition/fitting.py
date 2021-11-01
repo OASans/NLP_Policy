@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+import sys
+sys.path.append('/remote-home/aqshi/NLP_Policy/NLP_Policy')
+sys.path.append('/remote-home/aqshi/NLP_Policy')
+
 import os
 import json
 import torch
@@ -14,7 +19,7 @@ class FittingConfig:
     def __init__(self, unique):
         self.use_cuda = False
         self.w2v = False
-        self.batch_size = 16
+        self.batch_size = 8
         self.epochs = 100
         self.lr = {'ptm': 0.00003, 'crf': 0.005, 'others': 0.0001}
         self.early_stop = True
@@ -219,7 +224,7 @@ class ModelFitting:
 
     def evaluate(self, pred, y_true):
         batch_size = len(pred)
-        y_true = y_true.numpy()
+        y_true = y_true.numpy() if not self.use_cuda else y_true.cpu().numpy()
         correct_preds, total_correct, total_preds = 0., 0., 0.
 
         for i in range(batch_size):
@@ -260,6 +265,8 @@ class ModelFitting:
         last_better_epoch = 0
         for epoch in range(self.epochs):
             for step, (inputs, targets) in enumerate(train_dataloader):
+                if self.use_cuda:
+                    torch.cuda.empty_cache()
                 optimizer.zero_grad()
                 self.model.train()
                 preds = self.model(inputs)
@@ -278,7 +285,7 @@ class ModelFitting:
                 if eval_result['loss'] < best_dev_loss:
                     best_dev_loss = eval_result['loss']
                     last_better_epoch = epoch
-                    self.save_model(self.model)
+                    # self.save_model(self.model)
                 elif self.early_stop:
                     if epoch - last_better_epoch >= self.patience:
                         print('===============================early stopping...===============================')
@@ -286,6 +293,8 @@ class ModelFitting:
                         break
             self._plotting_data(eval_result['p'], eval_result['r'], eval_result['f1'], eval_result['loss'].item())
             scheduler.step()
+            if self.use_cuda:
+                torch.cuda.empty_cache()
 
     def eval(self, dev_inputs):
         dev_data = dev_inputs['data']
@@ -295,6 +304,8 @@ class ModelFitting:
         with torch.no_grad():
             print('==================================evaluating dev data...==================================')
             for step, (inputs, targets) in enumerate(dev_dataloader):
+                if self.use_cuda:
+                    torch.cuda.empty_cache()
                 self.model.eval()
                 preds = self.model(inputs)
                 loss = self.model.cal_loss(preds, targets, inputs['sentence_masks'])
