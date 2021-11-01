@@ -4,7 +4,7 @@ sys.path.append('/remote-home/aqshi/NLP_Policy')
 
 from entry_extraction.relation_classification.data_process import DataProcessConfig, DataProcess
 from entry_extraction.relation_classification.fitting import FittingConfig, ModelFitting
-from entry_extraction.relation_classification.models import BertESIM, ModelConfig
+from entry_extraction.relation_classification.models import ModelConfig, BertESIM, BertLSTM, SimpleBertESIM
 
 
 class Config:
@@ -14,7 +14,7 @@ class Config:
         self.need_preprocess = False
         self.debug_mode = False
         self.en_train = True
-        self.en_test = True
+        self.en_test = False
         self.unique = 'testing'
 
         # data process
@@ -46,7 +46,10 @@ if __name__ == '__main__':
     label2idx, idx2label = data_process.get_data('label')
 
     model_fitting = ModelFitting(config.fitting_config)
-    model = BertESIM(config.model_config)
+
+    # model = BertESIM(config.model_config)
+    # model = BertLSTM(config.model_config)
+    model = SimpleBertESIM(config.model_config)
 
     if config.en_train:
         print('training...')

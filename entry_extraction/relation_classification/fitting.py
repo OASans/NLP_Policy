@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from sklearn import metrics
 
+from NLP_Policy.data_process.word2vec import get_w2v_vector
+
 
 class FittingConfig:
     def __init__(self, unique):
