@@ -48,8 +48,8 @@ if __name__ == '__main__':
     model_fitting = ModelFitting(config.fitting_config)
 
     # model = BertESIM(config.model_config)
-    # model = BertLSTM(config.model_config)
-    model = SimpleBertESIM(config.model_config)
+    model = BertLSTM(config.model_config)
+    # model = SimpleBertESIM(config.model_config)
 
     if config.en_train:
         print('training...')

@@ -19,11 +19,11 @@ class FittingConfig:
     def __init__(self, unique):
         self.use_cuda = False
         self.w2v = False
-        self.batch_size = 8
+        self.batch_size = 10
         self.epochs = 100
         self.lr = {'ptm': 0.00003, 'crf': 0.005, 'others': 0.0001}
         self.early_stop = True
-        self.patience = 8
+        self.patience = 30
         self.decay = 0.95
         self.num_tags = None
 

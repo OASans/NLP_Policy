@@ -18,11 +18,11 @@ from NLP_Policy.data_process.word2vec import get_w2v_vector
 class FittingConfig:
     def __init__(self, unique):
         self.use_cuda = False
-        self.batch_size = 10
+        self.batch_size = 12
         self.epochs = 100
         self.lr = {'ptm': 0.00003, 'others': 0.001}
         self.early_stop = True
-        self.patience = 8
+        self.patience = 30
         self.decay = 0.95
         self.num_tags = None
 
