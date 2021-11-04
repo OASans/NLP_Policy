@@ -1,10 +1,11 @@
-from data_process import DataProcessConfig, DataProcess
+from data_process_ import DataProcessConfig, DataProcess
 from fitting import FittingConfig, ModelFitting
 from models import ModelE, ModelConfig
 
 
 class Config:
     def __init__(self):
+        # ==========================================开关=======================================================
         # TODO: check these lines every running time
         self.use_cuda = False
         self.need_preprocess = False
@@ -12,6 +13,7 @@ class Config:
         self.en_train = True
         self.en_test = False
         self.unique = 'testing'
+        # ===========================================各部分配置======================================================
 
         # data process
         self.data_process_config = DataProcessConfig()
@@ -33,6 +35,7 @@ if __name__ == '__main__':
     if config.need_preprocess:
         print('preprocessing...')
         data_process.preprocess()
+        print('preprocess finished!')
 
     label2idx, idx2label = data_process.get_data('label')
     if config.en_train:

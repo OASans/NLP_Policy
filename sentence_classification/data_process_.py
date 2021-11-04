@@ -4,11 +4,19 @@ import json
 import hanlp
 import random
 import numpy as np
+import sys
+
+curPath = os.path.abspath(os.path.dirname(__file__))
+rootPath = os.path.split(curPath)[0]
+print(curPath)
+print(rootPath)
+# sys.path.append(rootPath)
+sys.path.append('../..')
 
 from NLP_Policy.data_process.word2vec import get_w2v_vocab
 
 
-class DataProcessConfig:
+class DataProcessConfig:  # 数据预处理的参数
     def __init__(self):
         self.preprocess = False
 
@@ -21,6 +29,8 @@ class DataProcessConfig:
 
         self.raw_data_path = '../data_process/datasets/sentence_classification.json'
         self.processed_data_path = os.path.join(os.getcwd(), 'data/')
+        print(self.processed_data_path)
+        # exit(0)
         if not os.path.exists(self.processed_data_path):
             os.makedirs(self.processed_data_path)
         self.total_path = os.path.join(self.processed_data_path, 'total.json')
@@ -35,22 +45,29 @@ class DataProcess:
     def __init__(self, config):
         self.config = config
 
-        if self.config.preprocess:
+        if self.config.preprocess:  # 需要预处理
             self.word_w2v = get_w2v_vocab()
+            print('get_w2v_vocab finished!')
+            # self.word_w2ve = get_w2v_vector()
+            # print('get_w2v_vector')
+            # print(self.word_w2v)
+            # print(self.word_w2ve)
+            # exit(0)
             self.word_w2v = dict([(word, index) for index, word in enumerate(self.word_w2v)])
             self.lattice_cutter = hanlp.load(hanlp.pretrained.mtl.CLOSE_TOK_POS_NER_SRL_DEP_SDP_CON_ELECTRA_SMALL_ZH)
+
             self.stopwords = self._stopwordslist('../data_process/utils/cn_stopwords.txt')
 
     def _stopwordslist(self, stop_word_path):
         stopwords = [line.strip() for line in open(stop_word_path, encoding='UTF-8').readlines()]
         return stopwords
 
-    def _load_data(self, path):
+    def _load_data(self, path):  # 加载数据
         with open(path, 'r') as f:
             data = json.load(f)
         return data
 
-    def _normalization(self, sample):
+    def _normalization(self, sample):  # 正则化
         def _get_lattice_word(sample):
             def is_all_chinese(word_str):
                 for c in word_str:
@@ -81,7 +98,7 @@ class DataProcess:
                         lattice_tokens.append(lword_index)
                 return lattice_tokens
 
-            # 分类任务中暂时先考虑一个分词工具
+            # Todo:分类任务中暂时先考虑一个分词工具，所以列表里只有一个
             cut_func = [lattice_cut]
             lattice_word = set()
             for func in cut_func:
@@ -95,7 +112,7 @@ class DataProcess:
                     'lattice_token': lattice_to_token(lattice_word), 'sentence_num': sample['sentence_num']}
         return _get_lattice_word(sample)
 
-    def data_split(self, total_data):
+    def data_split(self, total_data):  # 分词
         """
         randomly split data into train, dev, and test set
         """
@@ -126,7 +143,7 @@ class DataProcess:
         test_data = total_data[test_index_list]
         return train_data, dev_data, test_data
 
-    def _label2idx(self):
+    def _label2idx(self):  # 把标签转换成数字index
         label_num = len(self.config.labels)
         label2idx = {self.config.labels[i]: i for i in range(label_num)}
         idx2label = {i: self.config.labels[i] for i in range(label_num)}
@@ -137,14 +154,19 @@ class DataProcess:
         data = self._load_data(raw_path)
         norm_data = []
         for sample in data:
-            norm_data.append(self._normalization(sample))
+            # norm_data.append(self._normalization(sample))
+            print(sample)
+            newsample = self._normalization(sample)
+            norm_data.append(newsample)
+            print(newsample)
+        # exit(0)
         norm_data = np.array(norm_data)
 
 
         # 划分数据集，存json
         train_data, dev_data, test_data = self.data_split(norm_data)
         label2idx, idx2label = self._label2idx()
-        with open(self.config.train_path, 'w') as f:
+        with open(self.config.total_path, 'w') as f:  # Todo:写错了？
             json.dump(norm_data.tolist(), f)
         with open(self.config.train_path, 'w') as f:
             json.dump(train_data.tolist(), f)
@@ -156,6 +178,8 @@ class DataProcess:
             json.dump(label2idx, f)
         with open(self.config.idx2label_path, 'w') as f:
             json.dump(idx2label, f)
+        print('dump finished! exit!')
+        exit(0)
 
     def get_data(self, data_type):
         if data_type == 'label':

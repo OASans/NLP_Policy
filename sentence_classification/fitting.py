@@ -23,7 +23,10 @@ class ModelFitting:
     def __init__(self, config, model_config):
         self.config = config
         self.model_config = model_config
-        self.w2v_array = get_w2v_vector() if self.config.w2v else None
+        # self.w2v_array = get_w2v_vector() if self.config.w2v else None
+        if self.config.w2v:
+            self.w2v_array = get_w2v_vector()
+            print("get_w2v_vector finished!")
         self.label2idx, self.idx2label = None, None
         self.model = None
 
@@ -62,6 +65,7 @@ class ModelFitting:
             self.model = XGBoost(model_config=self.model_config)
 
         xgboost_clf = self.model(train_X, train_y)
+        print('training finished!')
         test_pred = xgboost_clf.predict(test_X)
 
         print('accuracy_score: ', metrics.accuracy_score(test_y, test_pred))
@@ -69,5 +73,6 @@ class ModelFitting:
         print('recall_score:', metrics.recall_score(test_y, test_pred, average='micro'))
         print('precision_score:', metrics.precision_score(test_y, test_pred, average='micro'))
         print('confusion_metrics:', metrics.confusion_matrix(test_y, test_pred))
+        print('predict finished!')
 
         return
