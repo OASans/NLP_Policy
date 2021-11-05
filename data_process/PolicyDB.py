@@ -227,11 +227,11 @@ class PolicyDB:
     # 注意：此处直接添加数据，并未进行更多预处理（例如去除对于模型训练而言冗余的数据）
     def read_new_file(self, file_path):
         # file_path = './new_data/503-柏柯羽.xlsx'
-        path_items = re.split('[/.-]', file_path)
-        tagger_name = path_items[-2]
-        uid = str(int(path_items[-3]))
-        annotate_time = path_items[-4]
-
+        folder_name, file_name = file_path.split('/')[-2], file_path.split('/')[-1]
+        folder_item = folder_name.split('-')
+        tagger_name = folder_item[0]
+        annotate_time = folder_item[1]
+        uid = file_name[:3]
         file_content = pd.read_excel(file_path, dtype=str).dropna(how='all').fillna('')
         sentence_num = file_content.shape[0]
 
@@ -281,6 +281,16 @@ class PolicyDB:
                 self.read_new_file(file)
             # 将原本的文件夹删除
             os.rmdir(annotated_folder)
+
+    # 删除某个文件的所有记录，并将其policy的annotate_status置为0
+    def delete_all_data_of_uid(self, uid):
+        # info = (annotate_status, tagger_name, annotate_time, uid)
+        policy_info = (0, '', '', uid)
+        self.update_policy(policy_info)
+        self.delete_from_table(sql="""delete from annotated_sentence where uid='{}'""".format(uid))
+        self.delete_from_table(sql="""delete from entity where sid LIKE '{}%'""".format(uid))
+        self.delete_from_table(sql="""delete from entry where sid LIKE '{}%'""".format(uid))
+        self.delete_from_table(sql="""delete from entry_logic where uid='{}'""".format(uid))
 
 
 class DB2DataSet:
@@ -487,10 +497,13 @@ class DB2DataSet:
 
 if __name__ == '__main__':
     config = DBConfig()
+
     if config.add_new_data_to_db:
         db = PolicyDB()
 
-        # db.delete_from_table('annotated_sentence')
+        db.delete_all_data_of_uid('555')
+
+        # db.delete_from_table('annotated_sentence', )
         # db.delete_from_table('entity')
         # db.delete_from_table('entry')
         # db.delete_from_table('entry_logic')
@@ -502,7 +515,7 @@ if __name__ == '__main__':
         dataset_converter = DB2DataSet()
         # dataset_converter.generate_sentence_classification_dataset()
         # dataset_converter.generate_entity_dataset()
-        dataset_converter.generate_entry_dataset()
+        # dataset_converter.generate_entry_dataset()
 
-        # dataset_converter.generate_all_datasets()
+        dataset_converter.generate_all_datasets()
         dataset_converter.close_db()
