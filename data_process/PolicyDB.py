@@ -14,7 +14,10 @@ import pandas as pd
 class DBConfig:
     def __init__(self):
         self.add_new_data_to_db = False
-        self.convert_db_to_dataset = True
+        self.convert_db_to_dataset = False
+        self.assign_tasks = True
+        self.task_week = '第三周'
+        self.task_num_per_tagger = 20
 
 
 class PolicyDB:
@@ -66,6 +69,15 @@ class PolicyDB:
             c.execute("""delete from {} where 1=1""".format(table_name))
         self.conn.commit()
 
+    # 选取policy表中某个状态的所有记录
+    def select_status_from_policy(self, status):
+        c = self.conn.cursor()
+        c.execute("""select * from policy where annotate_status={}""".format(status))
+        values = c.fetchall()
+        keys = ['uid', 'origin_id', 'policy_name', 'annotate_status', 'tagger_name', 'annotate_time']
+        data = [dict(zip(keys, value)) for value in values]
+        return data
+
     # 更新标注人员信息
     def update_tagger_info(self):
         people = pd.DataFrame(
@@ -88,6 +100,7 @@ class PolicyDB:
     # 创建policy表
     def create_policy_table(self):
         # if policy already exists
+        # annotate_status: 0-未标注、1-已标注、-1-冗余文件、-2-不需要标注, 2-正在被某人标注
         self.drop_table('policy')
         self.create_table("""create table policy (
                             uid varchar(20) primary key,
@@ -292,6 +305,33 @@ class PolicyDB:
         self.delete_from_table(sql="""delete from entry where sid LIKE '{}%'""".format(uid))
         self.delete_from_table(sql="""delete from entry_logic where uid='{}'""".format(uid))
 
+    # 清洗冗余文件，将其在policy表中的annotate_status置为-1
+    def clean_duplicate_policy(self):
+
+        c = self.conn.cursor()
+        c.execute("""select * from policy""")
+        values = c.fetchall()
+
+        keys = ['uid', 'origin_id', 'policy_name', 'annotate_status', 'tagger_name', 'annotate_time']
+        data = [dict(zip(keys, value)) for value in values]
+        data = pd.DataFrame(data)
+
+        # 保留policy name中的汉字字符
+        data['clean_policy_name'] = data['policy_name'].apply(lambda x: re.sub('[^\u4e00-\u9fa5]+', '', x))
+
+        # 查找clean policy name冗余的记录
+        duplicated = data[data['clean_policy_name'].duplicated(keep=False)]
+        duplicated = duplicated.sort_values(by='clean_policy_name').reset_index(drop=True)
+
+        for i in range(1, duplicated.shape[0]):
+            current_status = duplicated.loc[i, 'annotate_status']
+            if current_status != 0:
+                continue
+            if duplicated.loc[i, 'clean_policy_name'] == duplicated.loc[i-1, 'clean_policy_name']:
+                # duplicated.loc[i, 'annotate_status'] = -1
+                policy_info = (-1, '', '', duplicated.loc[i, 'uid'])
+                self.update_policy(policy_info)
+
 
 class DB2DataSet:
     def __init__(self, db_name='policy.db', dataset_path='./datasets/'):
@@ -495,21 +535,78 @@ class DB2DataSet:
         self.generate_entry_dataset()
 
 
+class Tasks:
+    def __init__(self, db_name='policy.db', task_path='./tasks/', week='', task_num_per_tagger = 10):
+        self.conn = sqlite3.connect(db_name)
+        self.task_path = os.path.join(task_path, week)
+        self.task_num_per_tagger = task_num_per_tagger
+        self.week = week
+        self.db = PolicyDB()
+
+        if not os.path.exists(task_path):
+            os.makedirs(task_path)
+        if not os.path.exists(self.task_path):
+            os.makedirs(self.task_path)
+
+    # 查看目前在工作的标注人员
+    def get_tagger(self):
+        c = self.conn.cursor()
+        c.execute("""select * from tagger where status=1""")
+        values = c.fetchall()
+        keys = ['name', 'id', 'status']
+        tagger = [dict(zip(keys, value)) for value in values]
+        return tagger
+
+    # 查看目前没被标注的政策pi
+    def get_unannotated_uid(self):
+        c = self.conn.cursor()
+        c.execute("""select * from policy where annotate_status=0""")
+        values = c.fetchall()
+        keys = ['uid', 'origin_id', 'policy_name', 'annotate_status', 'tagger_name', 'annotate_time']
+        policies = [dict(zip(keys, value)) for value in values]
+        return policies
+
+    def generate_tasks(self):
+        available_taggers = self.get_tagger()
+        available_policies = self.get_unannotated_uid()
+        total_policy_num = min(len(available_taggers) * self.task_num_per_tagger, len(available_policies))
+
+        tagger_policy_dict = collections.defaultdict(list)
+        policy_index = 0
+        for tagger in available_taggers:
+            count = 0
+            while policy_index < total_policy_num and count < 20:
+                policy_uid = available_policies[policy_index]['uid']
+                tagger_policy_dict[tagger['name']].append(policy_uid)
+                policy_index += 1
+                count += 1
+
+        for tagger, uid_list in tagger_policy_dict.items():
+            dir_name = os.path.join(self.task_path, '{}-{}'.format(tagger, self.week))
+            if not os.path.exists(dir_name):
+                os.mkdir(dir_name)
+            for uid in uid_list:
+                shutil.copytree('/Volumes/TOURO Mobil/policy标注/政策文件rawdata/{}'.format(uid), dir_name+'/{}'.format(uid))
+                policy_info = (2, tagger, '', uid)
+                self.db.update_policy(policy_info)
+
+
 if __name__ == '__main__':
     config = DBConfig()
 
     if config.add_new_data_to_db:
         db = PolicyDB()
 
-        db.delete_all_data_of_uid('555')
+        db.clean_duplicate_policy()
+        # db.delete_all_data_of_uid('445')
 
         # db.delete_from_table('annotated_sentence', )
         # db.delete_from_table('entity')
         # db.delete_from_table('entry')
         # db.delete_from_table('entry_logic')
 
-        db.add_new_data()
-        db.close_db()
+        # db.add_new_data()
+        # db.close_db()
 
     if config.convert_db_to_dataset:
         dataset_converter = DB2DataSet()
@@ -519,3 +616,12 @@ if __name__ == '__main__':
 
         dataset_converter.generate_all_datasets()
         dataset_converter.close_db()
+
+    if config.assign_tasks:
+        task_assigner = Tasks(week=config.task_week, task_num_per_tagger=config.task_num_per_tagger)
+        task_assigner.generate_tasks()
+        # db = PolicyDB()
+        # policies = db.select_status_from_policy(2)
+        # for policy in policies:
+        #     info = (0, '', '', policy['uid'])
+        #     db.update_policy(info)
