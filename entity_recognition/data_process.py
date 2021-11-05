@@ -246,6 +246,7 @@ class DataProcess:
             json.dump(label2idx, f)
         with open(self.config.idx2label_path, 'w') as f:
             json.dump(idx2label, f)
+        print('dump finished!exit!')
 
     def get_data(self, data_type):
         if data_type == 'label':

@@ -1,4 +1,4 @@
-from data_process_ import DataProcessConfig, DataProcess
+from data_process import DataProcessConfig, DataProcess
 from fitting import FittingConfig, ModelFitting
 from models import ModelE, ModelConfig
 

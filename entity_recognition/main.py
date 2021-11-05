@@ -1,3 +1,6 @@
+import sys
+sys.path.append('../..')
+
 from NLP_Policy.entity_recognition.data_process import DataProcessConfig, DataProcess
 from NLP_Policy.entity_recognition.fitting import FittingConfig, ModelFitting
 from NLP_Policy.entity_recognition.models import ModelConfig, Bert_Crf
@@ -36,6 +39,7 @@ if __name__ == '__main__':
     if config.need_preprocess:
         print('preprocessing...')
         data_process.preprocess()
+        exit(0)
 
     label2idx, idx2label = data_process.get_data('label')
     model_fitting = ModelFitting(config.fitting_config)
