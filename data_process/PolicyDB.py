@@ -14,9 +14,9 @@ import pandas as pd
 class DBConfig:
     def __init__(self):
         self.add_new_data_to_db = False
-        self.convert_db_to_dataset = False
-        self.assign_tasks = True
-        self.task_week = '第三周'
+        self.convert_db_to_dataset = True
+        self.assign_tasks = False
+        self.task_week = 'task_1107'
         self.task_num_per_tagger = 20
 
 
@@ -78,8 +78,18 @@ class PolicyDB:
         data = [dict(zip(keys, value)) for value in values]
         return data
 
-    # 更新标注人员信息
     def update_tagger_info(self):
+        self.delete_from_table(table_name='tagger')
+        df = pd.read_csv('./util_data/tagger_1107.csv')
+        df['status'] = 1
+        df.columns = ['name', 'id', 'email', 'status']
+        df = df[['name', 'id', 'status']].dropna()
+        df['id'] = df['id'].astype(int).astype(str)
+        df.to_sql('tagger', self.conn, if_exists='replace', index=False)
+        self.conn.commit()
+
+    # 更新标注人员信息
+    def update_tagger_info_1(self):
         people = pd.DataFrame(
             [['王昕', '20307090013', 1], ['虎雪', '19307090201', 0], ['苏慧怡', '19307090197', 1], ['赵子昂', '20307090056', 1], ['王心恬', '19307090134', 1],
              ['冷方琼', '20307090139', 1], ['周人芨', '19307090009', 1], ['南楠', '20307090155', 1], ['姜静宜', '19307090065', 0], ['陈奔逸', '19307090045', 1],
@@ -244,7 +254,7 @@ class PolicyDB:
         folder_item = folder_name.split('-')
         tagger_name = folder_item[0]
         annotate_time = folder_item[1]
-        uid = file_name[:3]
+        uid = re.split('[-.]', file_name)[0]
         file_content = pd.read_excel(file_path, dtype=str).dropna(how='all').fillna('')
         sentence_num = file_content.shape[0]
 
@@ -422,6 +432,38 @@ class DB2DataSet:
                 if not standard_time: return ''
                 return standard_time.group(0)
 
+        def department_standarder(origin_depart: str) -> list:
+            if '、' in origin_depart or ',' in origin_depart or '，' in origin_depart or ' ' in origin_depart:
+                pause_pos = []
+                bracket_flag = False
+                pause = ['、', ',', '，', ' ']
+                left_bracket = ['(', '（', '[', '{', '【', '「', '<', '《']
+                right_bracket = [')', '）', ']', '}', '】', '」', '>', '》']
+                for i, x in enumerate(origin_depart):
+                    if x in left_bracket:
+                        bracket_flag = True
+                    elif x in right_bracket:
+                        bracket_flag = False
+                    elif x in pause and not bracket_flag:
+                        pause_pos.append(i)
+                pause_pos = [-1] + pause_pos
+                parts = [origin_depart[i + 1:j] for i, j in zip(pause_pos, pause_pos[1:]+[None])]
+                return parts
+            else:
+                pause_pos = []
+                for i, x in enumerate(origin_depart):
+                    if i >= 2 and origin_depart[i - 2: i + 1] == '办公室' and i != len(origin_depart) - 1:
+                        pause_pos.append(i + 1)
+                    if x == '局' and i + 3 <= len(origin_depart) - 1 and (
+                            origin_depart[i + 3] == '市' or origin_depart[i + 3] == '区' or origin_depart[i + 3] == '县'):
+                        pause_pos.append(i + 1)
+                pause_pos = [0] + pause_pos
+                parts = [origin_depart[i:j] for i, j in zip(pause_pos, pause_pos[1:]+[None])]
+
+                if not parts:
+                    parts.append(origin_depart)
+                return parts
+
         dataset_path = self.dataset_path + 'entity.json'
         if os.path.exists(dataset_path):
             os.remove(dataset_path)
@@ -433,6 +475,17 @@ class DB2DataSet:
             left outer join (select count(sentence) as sentence_num, uid from annotated_sentence group by uid) as temp 
             on annotated_sentence.uid=temp.uid""")
         values = c.fetchall()  # sid, entity, entity_type, sentence
+
+        # 处理制定部门、执行部门的历史遗留问题：一个span里有多个部门，要拆开
+        refined_values = []
+        for i, value in enumerate(values):
+            if value[2] != '制定部门' and value[2] != '执行部门':
+                refined_values.append(value)
+            else:
+                refined = department_standarder(value[1])
+                for depart in refined:
+                    refined_values.append((value[0], depart, value[2], value[3]))
+        values = refined_values
 
         legal_values_in_sentence = collections.defaultdict(list)
         sid2sentence = {}
@@ -597,31 +650,39 @@ if __name__ == '__main__':
     if config.add_new_data_to_db:
         db = PolicyDB()
 
-        db.clean_duplicate_policy()
-        # db.delete_all_data_of_uid('445')
+        # db.clean_duplicate_policy()
+
+        db.delete_all_data_of_uid('16-')
+        db.delete_all_data_of_uid('17-')
+        db.delete_all_data_of_uid('18-')
+        db.delete_all_data_of_uid('19-')
 
         # db.delete_from_table('annotated_sentence', )
         # db.delete_from_table('entity')
         # db.delete_from_table('entry')
         # db.delete_from_table('entry_logic')
 
-        # db.add_new_data()
-        # db.close_db()
+        db.add_new_data()
+        db.close_db()
 
     if config.convert_db_to_dataset:
         dataset_converter = DB2DataSet()
         # dataset_converter.generate_sentence_classification_dataset()
-        # dataset_converter.generate_entity_dataset()
+        dataset_converter.generate_entity_dataset()
         # dataset_converter.generate_entry_dataset()
 
-        dataset_converter.generate_all_datasets()
+        # dataset_converter.generate_all_datasets()
         dataset_converter.close_db()
 
     if config.assign_tasks:
-        task_assigner = Tasks(week=config.task_week, task_num_per_tagger=config.task_num_per_tagger)
-        task_assigner.generate_tasks()
+        # db = PolicyDB()
+        # db.update_tagger_info()
+
         # db = PolicyDB()
         # policies = db.select_status_from_policy(2)
         # for policy in policies:
         #     info = (0, '', '', policy['uid'])
         #     db.update_policy(info)
+
+        task_assigner = Tasks(week=config.task_week, task_num_per_tagger=config.task_num_per_tagger)
+        task_assigner.generate_tasks()
