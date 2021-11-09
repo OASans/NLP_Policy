@@ -6,11 +6,6 @@ import random
 import numpy as np
 import sys
 
-curPath = os.path.abspath(os.path.dirname(__file__))
-rootPath = os.path.split(curPath)[0]
-print(curPath)
-print(rootPath)
-# sys.path.append(rootPath)
 sys.path.append('../..')
 
 from NLP_Policy.data_process.word2vec import get_w2v_vocab

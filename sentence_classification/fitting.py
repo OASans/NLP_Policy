@@ -4,7 +4,7 @@ import numpy as np
 from sklearn import metrics
 
 from NLP_Policy.data_process.word2vec import get_w2v_vector
-from models import ModelE, XGBoost
+from models import ModelE, XGBoost, SVM
 
 
 class FittingConfig:
@@ -63,6 +63,8 @@ class ModelFitting:
             train_X = np.vstack((train_X, dev_X))
             train_y = np.hstack((train_y, dev_y))
             self.model = XGBoost(model_config=self.model_config)
+        elif model is ModelE.SVM:
+            self.model = SVM()
 
         xgboost_clf = self.model(train_X, train_y)
         print('training finished!')

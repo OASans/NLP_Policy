@@ -23,7 +23,8 @@ class Config:
         self.fitting_config = FittingConfig(self.unique)
 
         # models
-        self.model = ModelE.xgboost
+        # self.model = ModelE.xgboost
+        self.model = ModelE.SVM
         self.model_config = ModelConfig()
 
 
