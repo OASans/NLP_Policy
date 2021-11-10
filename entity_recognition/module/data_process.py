@@ -23,6 +23,7 @@ class DataProcessConfig:
         self.test_rate = 0.2
         self.max_len = 512
         self.ner_tagging = 'BIO'
+        self.w2v = True
 
         # fixed
         self.ptm_model = 'hfl/chinese-roberta-wwm-ext-large'
@@ -32,7 +33,7 @@ class DataProcessConfig:
         self.num_tags = (4 * self.num_types + 1) if self.ner_tagging == 'BIOES' else (
             (2 * self.num_types + 1) if self.ner_tagging == 'BIO' else None)
         self.raw_data_path = '../data_process/datasets/entity.json'
-        self.processed_data_path = os.path.join(os.getcwd(), 'data/')
+        self.processed_data_path = os.path.join(os.getcwd(), 'data')
         if not os.path.exists(self.processed_data_path):
             os.makedirs(self.processed_data_path)
         self.total_path = os.path.join(self.processed_data_path, 'total.json')
@@ -51,10 +52,11 @@ class DataProcess:
 
         if self.config.preprocess:
             self.spacy_nlp = spacy.blank("zh")
-            self.lattice_cutter = hanlp.load(hanlp.pretrained.mtl.CLOSE_TOK_POS_NER_SRL_DEP_SDP_CON_ELECTRA_SMALL_ZH)
-            self.word_w2v = get_w2v_vocab()
-            self.word_w2v = dict([(word, index) for index, word in enumerate(self.word_w2v)])
-            self.stopwords = self._stopwordslist('../data_process/utils/cn_stopwords.txt')
+            if self.config.w2v:
+                self.lattice_cutter = hanlp.load(hanlp.pretrained.mtl.CLOSE_TOK_POS_NER_SRL_DEP_SDP_CON_ELECTRA_SMALL_ZH)
+                self.word_w2v = get_w2v_vocab()
+                self.word_w2v = dict([(word, index) for index, word in enumerate(self.word_w2v)])
+                self.stopwords = self._stopwordslist('../data_process/utils/cn_stopwords.txt')
             self.tokenizer = MyBertTokenizer.from_pretrained(config.ptm_model)
 
     def _load_data(self, path):
@@ -174,11 +176,15 @@ class DataProcess:
         filtered_spans = filter_spans(origin_spans)
         upmost_entities = [(raw2decode[s.start], raw2decode[s.end - 1], self.config.label_dict[s.label_]) for s in filtered_spans]
 
-        coarse_lattice, fine_lattice = _get_lattice_word(sample['sentence'], raw2decode)
-        lattice_tokens = _convert_lattice_to_token(fine_lattice)
-        return {'sid': sample['sid'], 'sentence_num': sample['sentence_num'], 'sentence_tokens': tokens,
-                'raw2decode': raw2decode, 'decode2raw': decode2raw, 'entity_list': upmost_entities,
-                'coarse_lattice': coarse_lattice, 'lattice_tokens': lattice_tokens}
+        if self.config.w2v:
+            coarse_lattice, fine_lattice = _get_lattice_word(sample['sentence'], raw2decode)
+            lattice_tokens = _convert_lattice_to_token(fine_lattice)
+            return {'sid': sample['sid'], 'sentence_num': sample['sentence_num'], 'sentence_tokens': tokens,
+                    'raw2decode': raw2decode, 'decode2raw': decode2raw, 'entity_list': upmost_entities,
+                    'lattice': coarse_lattice, 'lattice_tokens': lattice_tokens}
+        else:
+            return {'sid': sample['sid'], 'sentence_num': sample['sentence_num'], 'sentence_tokens': tokens,
+                    'raw2decode': raw2decode, 'decode2raw': decode2raw, 'entity_list': upmost_entities}
 
     def _data_split(self, total_data):
         """

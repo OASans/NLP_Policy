@@ -1,13 +1,13 @@
-from NLP_Policy.entity_recognition.data_process import DataProcessConfig, DataProcess
-from NLP_Policy.entity_recognition.fitting import FittingConfig, ModelFitting
-from NLP_Policy.entity_recognition.models import ModelConfig, Bert_Crf
+from module.data_process import DataProcessConfig, DataProcess
+from module.fitting import FittingConfig, ModelFitting
+from module.models import ModelConfig, Bert_Crf
 
 
 class Config:
     def __init__(self):
         # TODO: check these lines every running time
         self.use_cuda = False
-        self.need_preprocess = True
+        self.need_preprocess = False
         self.debug_mode = False
         self.en_train = True
         self.en_test = True
@@ -23,10 +23,12 @@ class Config:
         self.fitting_config.use_cuda = True if self.use_cuda else False
         self.fitting_config.num_tags = self.data_process_config.num_tags
         self.fitting_config.epochs = 1 if self.debug_mode else self.fitting_config.epochs
+        self.fitting_config.w2v = True if self.data_process_config.w2v else False
 
         # models
         self.model_config = ModelConfig()
         self.model_config.num_tags = self.data_process_config.num_tags
+        self.model_config.w2v = True if self.data_process_config.w2v else False
 
 
 if __name__ == '__main__':

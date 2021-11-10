@@ -13,7 +13,7 @@ from NLP_Policy.data_process.word2vec import get_w2v_vector
 class FittingConfig:
     def __init__(self, unique):
         self.use_cuda = False
-        self.w2v = False
+        self.w2v = True
         self.batch_size = 16
         self.epochs = 100
         self.lr = {'ptm': 0.00003, 'crf': 0.005, 'others': 0.0001}
@@ -23,7 +23,7 @@ class FittingConfig:
         self.num_tags = None
 
         # fixed
-        self.result_data_path = os.path.join(os.getcwd(), 'result/')
+        self.result_data_path = os.path.join(os.getcwd(), '../../sentence_classification/result/')
         if not os.path.exists(self.result_data_path):
             os.makedirs(self.result_data_path)
         self.result_model_path = os.path.join(self.result_data_path, 'best_model_{}.pt'.format(unique))
@@ -56,10 +56,16 @@ class ModelFitting:
         text_mask = []
         max_len = 0
         min_len = 9999
+        max_char_word_len = 0
         for sample in batch:
             sample_len = len(sample['sentence_tokens'])
             max_len = max_len if max_len > sample_len else sample_len
             min_len = min_len if min_len < sample_len else sample_len
+            char_word_len = sample_len + len(sample['lattice_tokens'])
+            if self.config.w2v:
+                char_word_len += len(sample['lattice_tokens']) + 1
+            if max_char_word_len < char_word_len:
+                    max_char_word_len = char_word_len
         for sample in batch:
             text_length = len(sample['sentence_tokens'])
             text.append(sample['sentence_tokens'] + [0] * (max_len - text_length))
@@ -68,6 +74,60 @@ class ModelFitting:
         text = torch.tensor(text)
         text_mask = torch.tensor(text_mask).float()
         result = {'sentence_tokens': [text, True], 'sentence_masks': [text_mask, True]}
+
+        if self.config.w2v:
+            word = []
+            word_mask = []
+            word_pos_b = []
+            word_pos_e = []
+            word_pos_abs = []
+            word_indice = []
+            indice_base = 0
+            for sample in batch:
+                text_length = len(sample['sentence_tokens'])
+                word_ = [0] * (text_length - min_len)
+                word_mask_ = [0] * (text_length - min_len) + [1] * len(sample['lattice_tokens'])
+                word_pos_b_ = [0] * (text_length - min_len)
+                word_pos_e_ = [0] * (text_length - min_len)
+                word_pos_abs_ = [0] * (text_length - min_len)
+                word_indice_ = [0] * (text_length - min_len) * 2
+                for abs_pos, lattice in enumerate(sample['lattice_tokens']):
+                    word_.append(lattice[0])
+                    word_pos_b_.append(lattice[1])
+                    word_pos_e_.append(lattice[2])
+                    word_pos_abs_.append(abs_pos)
+                    word_indice_.extend([indice_base + lattice[1], indice_base + lattice[2]])
+                tail_pad = [0] * (max_char_word_len - len(word_) - min_len)
+                word_.extend(tail_pad)
+                word_mask_.extend(tail_pad)
+                word_pos_b_.extend(tail_pad)
+                word_pos_e_.extend(tail_pad)
+                word_pos_abs_.extend(tail_pad)
+                word_indice_.extend(tail_pad)
+                word_indice_.extend(tail_pad)
+                indice_base += max_len
+
+                word.append([self.w2v_array[w] for w in word_])
+                word_mask.append(word_mask_)
+                word_pos_b.append(word_pos_b_)
+                word_pos_e.append(word_pos_e_)
+                word_pos_abs.append(word_pos_abs_)
+                word_indice.extend(word_indice_)
+            word = torch.tensor(word)
+            word_mask = torch.tensor(word_mask).float()
+            word_pos_b = torch.tensor(word_pos_b).long()
+            word_pos_e = torch.tensor(word_pos_e).long()
+            word_pos_abs = torch.tensor(word_pos_abs).long()
+            word_indice = torch.tensor(word_indice).long()
+            part_size = [min_len, max_len - min_len, max_char_word_len - max_len]
+            result['word_text'] = [word, True]
+            result['word_mask'] = [word_mask, True]
+            result['word_pos_b'] = [word_pos_b, True]
+            result['word_pos_e'] = [word_pos_e, True]
+            result['word_pos_abs'] = [word_pos_abs, True]
+            result['word_indice'] = [word_indice, True]
+            result['part_size'] = [part_size, False]
+
         if self.use_cuda:
             result = dict([(key, value[0].cuda() if value[1] else value[0]) for key, value in result.items()])
         else:

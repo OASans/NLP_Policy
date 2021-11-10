@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
+import torch
 import torch.nn as nn
-from transformers import BertModel
 from pytorchcrf import CRF
+
+from encoder import Bert, TextEncoder
 
 
 class ModelConfig:
@@ -11,28 +13,20 @@ class ModelConfig:
         # bert
         self.ptm_model = 'hfl/chinese-roberta-wwm-ext-large'
         self.ptm_feat_size = 1024
+        self.num_ptm_layers = 12
+
+        # w2v
+        self.w2v = False
+        self.w2v_feat_size = 300
 
         # crf
         self.num_tags = None
 
-
-# Bert
-class Bert(nn.Module):
-    def __init__(self, config):
-        super(Bert, self).__init__()
-        self.params = {'ptm': [], 'other': []}
-
-        self.bert = BertModel.from_pretrained(config.ptm_model, output_hidden_states=True)
-        self.params['ptm'].extend([p for p in self.bert.parameters()])
-
-    def get_params(self):
-        return self.params
-
-    def forward(self, inputs):
-        text_embedded = self.bert(inputs['sentence_tokens'], inputs['sentence_masks'])['last_hidden_state']
-        return text_embedded
+        # common
+        self.layer_norm_eps = 1e-12
 
 
+# %% decoder
 # CRF
 class Crf(nn.Module):
     def __init__(self, config):
@@ -107,3 +101,13 @@ class Bert_Crf(nn.Module):
         text_embedded = self.bert(inputs)
         output = self.crf(text_embedded, inputs['sentence_masks'])
         return output
+
+
+class Bert_W2v_Crf(nn.Module):
+    def __init__(self, config):
+        super(Bert_W2v_Crf, self).__init__()
+        self.params = {}
+        self.layer_list = []
+
+        self.text_encoder = TextEncoder(config)
+        self.layer_list.append(self.text_encoder)
