@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/remote-home/aqshi/NLP_Policy/NLP_Policy')
+sys.path.append('/remote-home/aqshi/NLP_Policy')
 import os
 import json
 import torch
@@ -23,7 +26,7 @@ class FittingConfig:
         self.num_tags = None
 
         # fixed
-        self.result_data_path = os.path.join(os.getcwd(), '../../sentence_classification/result/')
+        self.result_data_path = os.path.join(os.getcwd(), 'result')
         if not os.path.exists(self.result_data_path):
             os.makedirs(self.result_data_path)
         self.result_model_path = os.path.join(self.result_data_path, 'best_model_{}.pt'.format(unique))
@@ -65,7 +68,7 @@ class ModelFitting:
             if self.config.w2v:
                 char_word_len += len(sample['lattice_tokens']) + 1
             if max_char_word_len < char_word_len:
-                    max_char_word_len = char_word_len
+                max_char_word_len = char_word_len
         for sample in batch:
             text_length = len(sample['sentence_tokens'])
             text.append(sample['sentence_tokens'] + [0] * (max_len - text_length))
@@ -303,6 +306,8 @@ class ModelFitting:
         last_better_epoch = 0
         for epoch in range(self.epochs):
             for step, (inputs, targets) in enumerate(train_dataloader):
+                if self.use_cuda:
+                    torch.cuda.empty_cache()
                 optimizer.zero_grad()
                 self.model.train()
                 preds = self.model(inputs)
@@ -321,7 +326,7 @@ class ModelFitting:
                 if eval_result['loss'] < best_dev_loss:
                     best_dev_loss = eval_result['loss']
                     last_better_epoch = epoch
-                    self.save_model(self.model)
+                    # self.save_model(self.model)
                 elif self.early_stop:
                     if epoch - last_better_epoch >= self.patience:
                         print('===============================early stopping...===============================')
@@ -340,6 +345,8 @@ class ModelFitting:
         with torch.no_grad():
             print('==================================evaluating dev data...==================================')
             for step, (inputs, targets) in enumerate(dev_dataloader):
+                if self.use_cuda:
+                    torch.cuda.empty_cache()
                 self.model.eval()
                 preds = self.model(inputs)
                 loss = self.model.cal_loss(preds, targets, inputs['sentence_masks'])

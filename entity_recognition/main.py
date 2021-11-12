@@ -1,6 +1,6 @@
 from module.data_process import DataProcessConfig, DataProcess
 from module.fitting import FittingConfig, ModelFitting
-from module.models import ModelConfig, Bert_Crf
+from module.models import ModelConfig, Bert_Crf, Bert_Flat_Crf
 
 
 class Config:
@@ -10,7 +10,7 @@ class Config:
         self.need_preprocess = False
         self.debug_mode = False
         self.en_train = True
-        self.en_test = True
+        self.en_test = False
         self.unique = 'testing'
 
         # data process
@@ -29,6 +29,7 @@ class Config:
         self.model_config = ModelConfig()
         self.model_config.num_tags = self.data_process_config.num_tags
         self.model_config.w2v = True if self.data_process_config.w2v else False
+        self.model_config.max_len = self.data_process_config.max_len
 
 
 if __name__ == '__main__':
@@ -42,7 +43,8 @@ if __name__ == '__main__':
     label2idx, idx2label = data_process.get_data('label')
     model_fitting = ModelFitting(config.fitting_config)
 
-    model = Bert_Crf(config.model_config)
+    # model = Bert_Crf(config.model_config)
+    model = Bert_Flat_Crf(config.model_config)
     if config.en_train:
         print('training...')
         train_data = data_process.get_data('train')
