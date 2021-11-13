@@ -43,8 +43,8 @@ if __name__ == '__main__':
     label2idx, idx2label = data_process.get_data('label')
     model_fitting = ModelFitting(config.fitting_config)
 
-    # model = Bert_Crf(config.model_config)
-    model = Bert_Flat_Crf(config.model_config)
+    model = Bert_Crf(config.model_config)
+    # model = Bert_Flat_Crf(config.model_config)
     if config.en_train:
         print('training...')
         train_data = data_process.get_data('train')

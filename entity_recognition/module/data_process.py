@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/remote-home/aqshi/NLP_Policy/NLP_Policy')
+sys.path.append('/remote-home/aqshi/NLP_Policy')
 import os
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 import json
@@ -165,7 +168,7 @@ class DataProcess:
 
         def _convert_sentence_to_token(sentence):
             tokens = self.tokenizer.my_encode(sentence, max_length=self.token_max_len, add_special_tokens=True,
-                                            truncation=True)
+                                              truncation=True)
             decode2raw, raw2decode = self.tokenizer.get_token_map(sentence)
             return tokens, decode2raw, raw2decode
 

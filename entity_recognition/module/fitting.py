@@ -17,13 +17,14 @@ class FittingConfig:
     def __init__(self, unique):
         self.use_cuda = False
         self.w2v = True
-        self.batch_size = 16
+        self.batch_size = 8
         self.epochs = 100
         self.lr = {'ptm': 0.00003, 'crf': 0.005, 'others': 0.0001}
         self.early_stop = True
         self.patience = 8
         self.decay = 0.95
         self.num_tags = None
+        self.focal = False
 
         # fixed
         self.result_data_path = os.path.join(os.getcwd(), 'result')
@@ -198,7 +199,8 @@ class ModelFitting:
         plt.plot(epochs, self.acc_result['dev_p'], 'steelblue', label='dev_p')
         plt.plot(epochs, self.acc_result['dev_r'], 'darkolivegreen', label='dev_r')
         plt.plot(epochs, self.acc_result['dev_f1'], 'salmon', label='dev_f1')
-        plt.plot(epochs, self.acc_result['dev_loss'], 'darkorange', label='dev_loss')
+        if not self.config.focal:
+            plt.plot(epochs, self.acc_result['dev_loss'], 'darkorange', label='dev_loss')
         plt.legend()
         plt.savefig(self.config.result_pic_path)
         plt.show()
@@ -326,7 +328,7 @@ class ModelFitting:
                 if eval_result['loss'] < best_dev_loss:
                     best_dev_loss = eval_result['loss']
                     last_better_epoch = epoch
-                    # self.save_model(self.model)
+                    self.save_model(self.model)
                 elif self.early_stop:
                     if epoch - last_better_epoch >= self.patience:
                         print('===============================early stopping...===============================')

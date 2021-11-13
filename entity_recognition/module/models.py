@@ -4,7 +4,7 @@ import torch.nn as nn
 
 from module.encoder import Bert, TextEncoder
 from module.attn import RelPositionEmbedding
-from module.fusion import FLAT
+from module.fusion import FLAT, Dense
 from module.decoder import Crf
 
 
@@ -38,6 +38,7 @@ class ModelConfig:
 
         # crf
         self.num_tags = None
+        self.focal = False
 
         # common
         self.layer_norm_eps = 1e-12
@@ -53,6 +54,9 @@ class Bert_Crf(nn.Module):
 
         self.bert = Bert(config)
         self.layer_list.append(self.bert)
+
+        self.dense = Dense(config)
+        self.layer_list.append(self.dense)
 
         self.crf = Crf(config)
         self.layer_list.append(self.crf)
@@ -71,6 +75,7 @@ class Bert_Crf(nn.Module):
 
     def forward(self, inputs):
         text_embedded = self.bert(inputs)
+        text_embedded = self.dense(text_embedded)
         output = self.crf(text_embedded, inputs['sentence_masks'])
         return output
 

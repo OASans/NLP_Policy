@@ -60,7 +60,7 @@ class TextEncoder(nn.Module):
         if self.config.w2v:
             word_text, word_mask, word_indice = inputs['word_text'], inputs['word_mask'], inputs['word_indice']
             device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-            pos = torch.arange(0, text.size(1)).long().unsqueeze(dim=0).to(device)  # TODO
+            pos = torch.arange(0, text.size(1)).long().unsqueeze(dim=0).to(device)
             pos = pos * mask.long()
             char_s = char_e = pos
             word_s, word_e, word_abs = inputs['word_pos_b'], inputs['word_pos_e'], inputs['word_pos_abs']

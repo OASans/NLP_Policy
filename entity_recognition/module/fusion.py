@@ -4,6 +4,26 @@ import torch.nn as nn
 from module.attn import TransfSelfEncoderRel
 
 
+class Dense(nn.Module):
+    def __init__(self, config):
+        super(Dense, self).__init__()
+        self.config = config
+        self.params = {'other': []}
+
+        self.dense = nn.Linear(config.ptm_feat_size, config.hidden_size)
+        self.params['other'].extend([p for p in self.dense.parameters()])
+
+        self.dropout = nn.Dropout(config.dropout)
+
+    def get_params(self):
+        return self.params
+
+    def forward(self, text_embedded):
+        output = self.dense(text_embedded)
+        output = self.dropout(output)
+        return output
+
+
 class FLAT(nn.Module):
     def __init__(self, config):
         super(FLAT, self).__init__()

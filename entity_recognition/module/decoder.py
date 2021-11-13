@@ -7,6 +7,7 @@ from pytorchcrf import CRF
 class Crf(nn.Module):
     def __init__(self, config):
         super(Crf, self).__init__()
+        self.focal = config.focal
         self.params = {'crf': [], 'other': []}
         self.num_tags = config.num_tags
 
@@ -36,12 +37,14 @@ class Crf(nn.Module):
     def cal_loss(self, preds, y_true, mask):
         def focal(_loss_list):
             p = torch.exp(-_loss_list)
-            fl_loss = (torch.ones_like(p) - p)**2 * _loss_list
+            fl_loss = (torch.ones_like(p) - p)**(4) * _loss_list
             return fl_loss.mean()
         emission = preds['emission']
-        # _loss = -self.crf(emission, y_true, mask, reduction='token_mean')  # TODO
-        _loss = -self.crf(emission, y_true, mask, reduction='none')
-        _loss = focal(_loss)
+        if not self.focal:
+            _loss = -self.crf(emission, y_true, mask, reduction='token_mean')
+        else:
+            _loss = -self.crf(emission, y_true, mask, reduction='none')
+            _loss = focal(_loss)
         return _loss
 
     def forward(self, text_vec, mask, en_pred=True):
