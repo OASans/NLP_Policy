@@ -11,6 +11,7 @@ data_process/.DS_Store
 sentence_classification/data/
 sentence_classification/result/
 entity_recognition/data/
+entity_recognition/random_data/
 entity_recognition/result/
 entry_extraction/so_recognition/data/
 entry_extraction/so_recognition/result/

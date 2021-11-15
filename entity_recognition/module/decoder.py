@@ -41,7 +41,7 @@ class Crf(nn.Module):
             return fl_loss.mean()
         emission = preds['emission']
         if not self.focal:
-            _loss = -self.crf(emission, y_true, mask, reduction='token_mean')
+            _loss = -self.crf(emission, y_true, mask, reduction='mean')
         else:
             _loss = -self.crf(emission, y_true, mask, reduction='none')
             _loss = focal(_loss)
