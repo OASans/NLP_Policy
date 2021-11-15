@@ -15,6 +15,9 @@ class DBConfig:
     def __init__(self):
         self.add_new_data_to_db = False
         self.convert_db_to_dataset = True
+        self.assign_tasks = False
+        self.task_week = 'task_1107'
+        self.task_num_per_tagger = 20
 
 
 class PolicyDB:
@@ -66,8 +69,27 @@ class PolicyDB:
             c.execute("""delete from {} where 1=1""".format(table_name))
         self.conn.commit()
 
-    # 更新标注人员信息
+    # 选取policy表中某个状态的所有记录
+    def select_status_from_policy(self, status):
+        c = self.conn.cursor()
+        c.execute("""select * from policy where annotate_status={}""".format(status))
+        values = c.fetchall()
+        keys = ['uid', 'origin_id', 'policy_name', 'annotate_status', 'tagger_name', 'annotate_time']
+        data = [dict(zip(keys, value)) for value in values]
+        return data
+
     def update_tagger_info(self):
+        self.delete_from_table(table_name='tagger')
+        df = pd.read_csv('./util_data/tagger_1107.csv')
+        df['status'] = 1
+        df.columns = ['name', 'id', 'email', 'status']
+        df = df[['name', 'id', 'status']].dropna()
+        df['id'] = df['id'].astype(int).astype(str)
+        df.to_sql('tagger', self.conn, if_exists='replace', index=False)
+        self.conn.commit()
+
+    # 更新标注人员信息
+    def update_tagger_info_1(self):
         people = pd.DataFrame(
             [['王昕', '20307090013', 1], ['虎雪', '19307090201', 0], ['苏慧怡', '19307090197', 1], ['赵子昂', '20307090056', 1], ['王心恬', '19307090134', 1],
              ['冷方琼', '20307090139', 1], ['周人芨', '19307090009', 1], ['南楠', '20307090155', 1], ['姜静宜', '19307090065', 0], ['陈奔逸', '19307090045', 1],
@@ -88,6 +110,7 @@ class PolicyDB:
     # 创建policy表
     def create_policy_table(self):
         # if policy already exists
+        # annotate_status: 0-未标注、1-已标注、-1-冗余文件、-2-不需要标注, 2-正在被某人标注
         self.drop_table('policy')
         self.create_table("""create table policy (
                             uid varchar(20) primary key,
@@ -227,11 +250,11 @@ class PolicyDB:
     # 注意：此处直接添加数据，并未进行更多预处理（例如去除对于模型训练而言冗余的数据）
     def read_new_file(self, file_path):
         # file_path = './new_data/503-柏柯羽.xlsx'
-        path_items = re.split('[/.-]', file_path)
-        tagger_name = path_items[-2]
-        uid = str(int(path_items[-3]))
-        annotate_time = path_items[-4]
-
+        folder_name, file_name = file_path.split('/')[-2], file_path.split('/')[-1]
+        folder_item = folder_name.split('-')
+        tagger_name = folder_item[0]
+        annotate_time = folder_item[1]
+        uid = re.split('[-.]', file_name)[0]
         file_content = pd.read_excel(file_path, dtype=str).dropna(how='all').fillna('')
         sentence_num = file_content.shape[0]
 
@@ -281,6 +304,43 @@ class PolicyDB:
                 self.read_new_file(file)
             # 将原本的文件夹删除
             os.rmdir(annotated_folder)
+
+    # 删除某个文件的所有记录，并将其policy的annotate_status置为0
+    def delete_all_data_of_uid(self, uid):
+        # info = (annotate_status, tagger_name, annotate_time, uid)
+        policy_info = (0, '', '', uid)
+        self.update_policy(policy_info)
+        self.delete_from_table(sql="""delete from annotated_sentence where uid='{}'""".format(uid))
+        self.delete_from_table(sql="""delete from entity where sid LIKE '{}%'""".format(uid))
+        self.delete_from_table(sql="""delete from entry where sid LIKE '{}%'""".format(uid))
+        self.delete_from_table(sql="""delete from entry_logic where uid='{}'""".format(uid))
+
+    # 清洗冗余文件，将其在policy表中的annotate_status置为-1
+    def clean_duplicate_policy(self):
+
+        c = self.conn.cursor()
+        c.execute("""select * from policy""")
+        values = c.fetchall()
+
+        keys = ['uid', 'origin_id', 'policy_name', 'annotate_status', 'tagger_name', 'annotate_time']
+        data = [dict(zip(keys, value)) for value in values]
+        data = pd.DataFrame(data)
+
+        # 保留policy name中的汉字字符
+        data['clean_policy_name'] = data['policy_name'].apply(lambda x: re.sub('[^\u4e00-\u9fa5]+', '', x))
+
+        # 查找clean policy name冗余的记录
+        duplicated = data[data['clean_policy_name'].duplicated(keep=False)]
+        duplicated = duplicated.sort_values(by='clean_policy_name').reset_index(drop=True)
+
+        for i in range(1, duplicated.shape[0]):
+            current_status = duplicated.loc[i, 'annotate_status']
+            if current_status != 0:
+                continue
+            if duplicated.loc[i, 'clean_policy_name'] == duplicated.loc[i-1, 'clean_policy_name']:
+                # duplicated.loc[i, 'annotate_status'] = -1
+                policy_info = (-1, '', '', duplicated.loc[i, 'uid'])
+                self.update_policy(policy_info)
 
 
 class DB2DataSet:
@@ -372,6 +432,38 @@ class DB2DataSet:
                 if not standard_time: return ''
                 return standard_time.group(0)
 
+        def department_standarder(origin_depart: str) -> list:
+            if '、' in origin_depart or ',' in origin_depart or '，' in origin_depart or ' ' in origin_depart:
+                pause_pos = []
+                bracket_flag = False
+                pause = ['、', ',', '，', ' ']
+                left_bracket = ['(', '（', '[', '{', '【', '「', '<', '《']
+                right_bracket = [')', '）', ']', '}', '】', '」', '>', '》']
+                for i, x in enumerate(origin_depart):
+                    if x in left_bracket:
+                        bracket_flag = True
+                    elif x in right_bracket:
+                        bracket_flag = False
+                    elif x in pause and not bracket_flag:
+                        pause_pos.append(i)
+                pause_pos = [-1] + pause_pos
+                parts = [origin_depart[i + 1:j] for i, j in zip(pause_pos, pause_pos[1:]+[None])]
+                return parts
+            else:
+                pause_pos = []
+                for i, x in enumerate(origin_depart):
+                    if i >= 2 and origin_depart[i - 2: i + 1] == '办公室' and i != len(origin_depart) - 1:
+                        pause_pos.append(i + 1)
+                    if x == '局' and i + 3 <= len(origin_depart) - 1 and (
+                            origin_depart[i + 3] == '市' or origin_depart[i + 3] == '区' or origin_depart[i + 3] == '县'):
+                        pause_pos.append(i + 1)
+                pause_pos = [0] + pause_pos
+                parts = [origin_depart[i:j] for i, j in zip(pause_pos, pause_pos[1:]+[None])]
+
+                if not parts:
+                    parts.append(origin_depart)
+                return parts
+
         dataset_path = self.dataset_path + 'entity.json'
         if os.path.exists(dataset_path):
             os.remove(dataset_path)
@@ -383,6 +475,17 @@ class DB2DataSet:
             left outer join (select count(sentence) as sentence_num, uid from annotated_sentence group by uid) as temp 
             on annotated_sentence.uid=temp.uid""")
         values = c.fetchall()  # sid, entity, entity_type, sentence
+
+        # 处理制定部门、执行部门的历史遗留问题：一个span里有多个部门，要拆开
+        refined_values = []
+        for i, value in enumerate(values):
+            if value[2] != '制定部门' and value[2] != '执行部门':
+                refined_values.append(value)
+            else:
+                refined = department_standarder(value[1])
+                for depart in refined:
+                    refined_values.append((value[0], depart, value[2], value[3]))
+        values = refined_values
 
         legal_values_in_sentence = collections.defaultdict(list)
         sid2sentence = {}
@@ -485,12 +588,76 @@ class DB2DataSet:
         self.generate_entry_dataset()
 
 
+class Tasks:
+    def __init__(self, db_name='policy.db', task_path='./tasks/', week='', task_num_per_tagger = 10):
+        self.conn = sqlite3.connect(db_name)
+        self.task_path = os.path.join(task_path, week)
+        self.task_num_per_tagger = task_num_per_tagger
+        self.week = week
+        self.db = PolicyDB()
+
+        if not os.path.exists(task_path):
+            os.makedirs(task_path)
+        if not os.path.exists(self.task_path):
+            os.makedirs(self.task_path)
+
+    # 查看目前在工作的标注人员
+    def get_tagger(self):
+        c = self.conn.cursor()
+        c.execute("""select * from tagger where status=1""")
+        values = c.fetchall()
+        keys = ['name', 'id', 'status']
+        tagger = [dict(zip(keys, value)) for value in values]
+        return tagger
+
+    # 查看目前没被标注的政策pi
+    def get_unannotated_uid(self):
+        c = self.conn.cursor()
+        c.execute("""select * from policy where annotate_status=0""")
+        values = c.fetchall()
+        keys = ['uid', 'origin_id', 'policy_name', 'annotate_status', 'tagger_name', 'annotate_time']
+        policies = [dict(zip(keys, value)) for value in values]
+        return policies
+
+    def generate_tasks(self):
+        available_taggers = self.get_tagger()
+        available_policies = self.get_unannotated_uid()
+        total_policy_num = min(len(available_taggers) * self.task_num_per_tagger, len(available_policies))
+
+        tagger_policy_dict = collections.defaultdict(list)
+        policy_index = 0
+        for tagger in available_taggers:
+            count = 0
+            while policy_index < total_policy_num and count < 20:
+                policy_uid = available_policies[policy_index]['uid']
+                tagger_policy_dict[tagger['name']].append(policy_uid)
+                policy_index += 1
+                count += 1
+
+        for tagger, uid_list in tagger_policy_dict.items():
+            dir_name = os.path.join(self.task_path, '{}-{}'.format(tagger, self.week))
+            if not os.path.exists(dir_name):
+                os.mkdir(dir_name)
+            for uid in uid_list:
+                shutil.copytree('/Volumes/TOURO Mobil/policy标注/政策文件rawdata/{}'.format(uid), dir_name+'/{}'.format(uid))
+                policy_info = (2, tagger, '', uid)
+                self.db.update_policy(policy_info)
+
+
 if __name__ == '__main__':
     config = DBConfig()
+
     if config.add_new_data_to_db:
         db = PolicyDB()
 
-        # db.delete_from_table('annotated_sentence')
+        # db.clean_duplicate_policy()
+
+        db.delete_all_data_of_uid('16-')
+        db.delete_all_data_of_uid('17-')
+        db.delete_all_data_of_uid('18-')
+        db.delete_all_data_of_uid('19-')
+
+        # db.delete_from_table('annotated_sentence', )
         # db.delete_from_table('entity')
         # db.delete_from_table('entry')
         # db.delete_from_table('entry_logic')
@@ -506,3 +673,16 @@ if __name__ == '__main__':
 
         # dataset_converter.generate_all_datasets()
         dataset_converter.close_db()
+
+    if config.assign_tasks:
+        # db = PolicyDB()
+        # db.update_tagger_info()
+
+        # db = PolicyDB()
+        # policies = db.select_status_from_policy(2)
+        # for policy in policies:
+        #     info = (0, '', '', policy['uid'])
+        #     db.update_policy(info)
+
+        task_assigner = Tasks(week=config.task_week, task_num_per_tagger=config.task_num_per_tagger)
+        task_assigner.generate_tasks()
