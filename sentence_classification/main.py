@@ -24,7 +24,9 @@ class Config:
 
         # models
         # self.model = ModelE.xgboost
-        self.model = ModelE.SVM
+        # self.model = ModelE.SVM
+        self.model = ModelE.TextCNN
+        # self.model = ModelE.BiLSTM_Attention
         self.model_config = ModelConfig()
 
 
