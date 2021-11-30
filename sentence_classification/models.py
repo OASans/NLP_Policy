@@ -4,7 +4,6 @@ from sklearn.svm import SVC
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 
 ModelE = Enum('ModelE', ('xgboost', 'lgbm', 'adaboost', 'SVM', 'TextCNN', 'BiLSTM_Attention'))
@@ -61,12 +60,11 @@ class TextCNN(nn.Module):
     def forward(self, x):
         x = x.unsqueeze(1)
         x = [conv(x) for conv in self.convs]
-        x = [self.ReLU(item) for item in x]
-        x = [self.max_pool1d(item, item.size(2)).squeeze(2) for item in x]
+        x = [self.ReLU(item).squeeze(3) for item in x]
+        x = [F.max_pool1d(item, item.size(2)).squeeze(2) for item in x]
         x = torch.cat(x, 1)
         x = self.dropout(x)
         output = self.fc(x)
-        # output = output.squeeze(2)
         return output
 
 
@@ -87,7 +85,7 @@ class BiLSTM_Attention(nn.Module):
         self.w_omega = nn.Parameter(torch.Tensor(
             num_hiddens * 2, num_hiddens * 2))
         self.u_omega = nn.Parameter(torch.Tensor(num_hiddens * 2, 1))
-        self.decoder = nn.Linear(2 * num_hiddens, 2)
+        self.decoder = nn.Linear(2 * num_hiddens, 21)
 
         nn.init.uniform_(self.w_omega, -0.1, 0.1)
         nn.init.uniform_(self.u_omega, -0.1, 0.1)
@@ -97,6 +95,7 @@ class BiLSTM_Attention(nn.Module):
         # embeddings = self.word_embeddings(inputs)
         # 提取词特征，输出形状为(seq_len,batch_size,embedding_dim)
         # rnn.LSTM只返回最后一层的隐藏层在各时间步的隐藏状态。
+        inputs = inputs.permute(1, 0, 2)
         outputs, _ = self.encoder(inputs)  # output, (h, c)
         # outputs形状是(seq_len,batch_size, 2 * num_hiddens)
         x = outputs.permute(1, 0, 2)
@@ -116,37 +115,5 @@ class BiLSTM_Attention(nn.Module):
         feat = torch.sum(scored_x, dim=1)  # 加权求和
         # feat形状是(batch_size, 2 * num_hiddens)
         outs = self.decoder(feat)
-        # out形状是(batch_size, 2)
+        # out形状是(batch_size, 21)
         return outs
-
-    # def __init__(self, dimension=128):
-    #     super(LSTM, self).__init__()
-    #
-    #     self.dimension = dimension
-    #     self.lstm = nn.LSTM(input_size=300,
-    #                         hidden_size=dimension,
-    #                         num_layers=1,
-    #                         batch_first=True,
-    #                         bidirectional=True)
-    #     self.dropout = nn.Dropout(p=0.5)
-    #
-    #     self.fc = nn.Linear(2*dimension, 21)
-    #
-    # def forward(self, text, text_len):
-    #
-    #     text_emb = self.embedding(text)
-    #
-    #     packed_input = pack_padded_sequence(text_emb, text_len, batch_first=True, enforce_sorted=False)
-    #     packed_output, _ = self.lstm(packed_input)
-    #     output, _ = pad_packed_sequence(packed_output, batch_first=True)
-    #
-    #     out_forward = output[range(len(output)), text_len - 1, :self.dimension]
-    #     out_reverse = output[:, 0, self.dimension:]
-    #     out_reduced = torch.cat((out_forward, out_reverse), 1)
-    #     text_fea = self.dropout(out_reduced)
-    #
-    #     text_fea = self.fc(text_fea)
-    #     text_fea = torch.squeeze(text_fea, 1)
-    #     text_out = torch.sigmoid(text_fea)
-    #
-    #     return text_out

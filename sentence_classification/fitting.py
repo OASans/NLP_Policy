@@ -20,6 +20,9 @@ class FittingConfig:
         self.result_pic_path = os.path.join(self.result_data_path, 'acc_pic_{}.png'.format(unique))
 
         self.w2v = True
+        self.batchsize = 64
+        self.epochs = 20
+
 
 
 class ModelFitting:
@@ -83,41 +86,38 @@ class ModelFitting:
             print('confusion_metrics:', metrics.confusion_matrix(test_y, test_pred))
             print('predict finished!')
 
-        if model is ModelE.TextCNN:
-            batch_size = 64
-            epochs = 50
+        if model in [ModelE.TextCNN, ModelE.BiLSTM_Attention]:
             args = []
-            self.model = TextCNN(args)
-            train_steps = int((len(train_data) + batch_size - 1) / batch_size)
+            if model is ModelE.TextCNN:
+                self.model = TextCNN(args)
+            elif model is ModelE.BiLSTM_Attention:
+                self.model = BiLSTM_Attention(embedding_dim=300, num_hiddens=64, num_layers=1)
+            train_steps = int((len(train_data) + self.config.batch_size - 1) / self.config.batch_size)
             self.max_lattice_num = np.max([len(each["lattice_token"]) for each in train_data])
-            train_dataloader = DataLoader(train_data, batch_size=batch_size, collate_fn=self.collate_fn,
-                                          shuffle=True)
-            # params_lr = []
-            # for key, value in self.model.getparams().items():
-            #     if key in self.lr:
-            #         params_lr.append({"params":value, "lr": self.lr[key]})
+            train_dataloader = DataLoader(train_data, batch_size=self.config.batch_size, collate_fn=self.collate_fn,
+                                          shuffle=True)  # 不自己定义collate_fn则会报错每个batch不一样长
             optimizer = torch.optim.Adam(self.model.parameters(), weight_decay=1e-4)
             loss_func = nn.CrossEntropyLoss()
-            # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=self.decay)
 
             best_dev_loss = 99999
             last_better_epoch = 0
-            for epoch in range(epochs):
+            for epoch in range(self.config.epochs):
                 for step, (inputs, targets) in enumerate(train_dataloader):  # error
                     optimizer.zero_grad()
                     self.model.train()
-                    output = self.model(inputs)
-                    loss = loss_func(output, targets)
+                    output = self.model(inputs)  # inputs需要是float类型
+                    loss = loss_func(output, targets)  # targets需要是一维的long类型
                     loss.backward()
                     optimizer.step()
 
                     with torch.no_grad():
-                        test_accuracy = metrics.accuracy_score(output, targets)
-                        P = metrics.precision_score(output, targets, average='micro')
-                        R = metrics.recall_score(output, targets, average='micro')
-                        F1 = metrics.f1_score(output, targets, average='micro')
+                        _, pred_label = torch.max(output, 1)  # 获取预测标签
+                        test_accuracy = metrics.accuracy_score(targets, pred_label)
+                        P = metrics.precision_score(targets, pred_label, average='micro')
+                        R = metrics.recall_score(targets, pred_label, average='micro')
+                        F1 = metrics.f1_score(targets, pred_label, average='micro')
                         print('epoch: {}, step: {}/{}, loss: {:.6f}, acc: {:.4f}, P: {:.4f}, R: {:.4f}, F1: {:.4f}'.format(
-                            epoch, step, train_steps, loss, test_accuracy, P, R, F1
+                            epoch, step + 1, train_steps, loss, test_accuracy, P, R, F1
                         ))
                 # dev
                 with torch.no_grad():
@@ -125,60 +125,39 @@ class ModelFitting:
                     if eval_result['loss'] < best_dev_loss:
                         best_dev_loss = eval_result['loss']
                         last_better_epoch = epoch
-                        self.save_model(self.model)
+                        # self.save_model(self.model)
                     elif self.early_stop:
                         if epoch - last_better_epoch >= self.patience:
                             print('===============================early stopping...===============================')
                             print('best dev loss: ', best_dev_loss)
                             break
+            print("train finished!")
+
             # test
             with torch.no_grad():
-                self.test(test_data)
-
-        if model is ModelE.BiLSTM_Attention:
-            batch_size = 64
-            epochs = 50
-
-            self.model = BiLSTM_Attention(embedding_dim=300, num_hiddens=64, num_layers=1)
-            train_steps = int((len(train_data) + batch_size - 1) / batch_size)
-            self.max_lattice_num = np.max([len(each["lattice_token"]) for each in train_data])
-            train_dataloader = DataLoader(train_data, batch_size=batch_size, collate_fn=self.collate_fn,
-                                          shuffle=True)
-            optimizer = torch.optim.Adam(self.model.parameters(), weight_decay=1e-4)
-            loss_func = nn.CrossEntropyLoss()
-
-            for epoch in range(epochs):
-                for step, (inputs, targets) in enumerate(train_dataloader):  # every batch # error
-                    optimizer.zero_grad()
-                    self.model.train()
-                    output = self.model(inputs)
-                    loss = loss_func(output, targets)
-                    loss.backward()
-                    optimizer.step()
-
-                    with torch.no_grad():
-                        test_accuracy = metrics.accuracy_score(output, targets)
-                        P = metrics.precision_score(output, targets, average='micro')
-                        R = metrics.recall_score(output, targets, average='micro')
-                        F1 = metrics.f1_score(output, targets, average='micro')
-                        print('epoch: {}, step: {}/{}, loss: {:.6f}, acc: {:.4f}, P: {:.4f}, R: {:.4f}, F1: {:.4f}'.format(
-                            epoch, step, train_steps, loss, test_accuracy, P, R, F1
-                        ))
-        return
+                # self.test(test_data)
+                print('============================testing...=====================================')
+                test_result = self.eval(test_data)
+                print(test_result['loss'])
+            print("test finished!")
 
     def eval(self, dev_data):
-        dev_dataloader = DataLoader(dev_data, batch_size=64, shuffle=True)
+        dev_dataloader = DataLoader(dev_data, batch_size=64, collate_fn=self.collate_fn, shuffle=True)
         result = {}
         metrics_data = {'loss': 0, 'p': 0, 'r': 0, 'f1': 0, 'batch_num': 0}
+        loss_func = nn.CrossEntropyLoss()
+
         with torch.no_grad():
             print('==================================evaluating dev data...==================================')
             for step, (inputs, targets) in enumerate(dev_dataloader):
                 self.model.eval()
                 output = self.model(inputs)
-                loss = nn.CrossEntropyLoss(targets, output)
-                P = metrics.precision_score(output, targets, average='micro')
-                R = metrics.recall_score(output, targets, average='micro')
-                F1 = metrics.f1_score(output, targets, average='micro')
+                loss = loss_func(output, targets)  # 不能直接用CrossEntropyLoss，这是一个类，并且output和target位置不能反
+                _, pred_label = torch.max(output, 1)
+                test_accuracy = metrics.accuracy_score(targets, pred_label)
+                P = metrics.precision_score(targets, pred_label, average='micro')
+                R = metrics.recall_score(targets, pred_label, average='micro')
+                F1 = metrics.f1_score(targets, pred_label, average='micro')
                 metrics_data['loss'] += loss.cpu().float()
                 metrics_data['p'] += P
                 metrics_data['r'] += R
@@ -188,10 +167,11 @@ class ModelFitting:
             result['p'] = metrics_data['p'] / metrics_data['batch_num']
             result['r'] = metrics_data['r'] / metrics_data['batch_num']
             result['f1'] = metrics_data['f1'] / metrics_data['batch_num']
-            print('loss: {:.6f}, p: {:.4f}, r: {:.4f}, f1: {:.4f}'.format(result['loss'], result['p'], result['r'],
+            print('loss: {:.6f}, acc: {:.4f}, p: {:.4f}, r: {:.4f}, f1: {:.4f}'.format(result['loss'], test_accuracy, result['p'], result['r'],
                                                                           result['f1']))
         return result
 
+    # Todo
     def test(self, test_data):
         print('==================================evaluating test data...==================================')
         model = TextCNN
@@ -210,13 +190,8 @@ class ModelFitting:
                 X[i][j] += np.array(self.w2v_array[token])
 
         data = pd.DataFrame(np.array(data).tolist())
-        labels = np.array([self.label2idx[label] for label in data['sentence_type'].values])
-        y = np.zeros(shape=(batch_size, len(self.label2idx)), dtype=np.float64)
-        for i in range(batch_size):
-            y[i][labels[i]] = 1
-
-        print(torch.tensor(X).type(), torch.tensor(y).type())
-        return torch.tensor(X), torch.tensor(y)
+        y = np.array([self.label2idx[label] for label in data['sentence_type'].values])
+        return torch.FloatTensor(X), torch.Tensor(y).long()
 
     def save_model(self, model):
         print('==================================saving best model...==================================')
