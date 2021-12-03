@@ -20,9 +20,10 @@ class FittingConfig:
         self.result_pic_path = os.path.join(self.result_data_path, 'acc_pic_{}.png'.format(unique))
 
         self.w2v = True
-        self.batchsize = 64
+        self.merge_label = True  # 合并21类标签为8类
+        self.get_label_num = False  # 获取数据集标签数量
+        self.batch_size = 64
         self.epochs = 20
-
 
 
 class ModelFitting:
@@ -56,12 +57,42 @@ class ModelFitting:
         y = np.array([self.label2idx[label] for label in data['sentence_type'].values])
         return X, y
 
+    def get_l_num(self, train_data, dev_data, test_data):
+        _, train_label = self._get_X_y(train_data)
+        _, dev_label = self._get_X_y(dev_data)
+        _, test_label = self._get_X_y(test_data)
+        label_count = np.zeros(len(self.label2idx))
+        for i, set in enumerate([train_label, dev_label, test_label]):
+            print(str(i) + ":\n")
+            for item in set:
+                label_count[item] += 1
+            result = {}
+            for i in range(len(label_count)):
+                label_name = self.idx2label[str(i)]
+                result[label_name] = int(label_count[i])
+            print(result)
+            for key, value in result.items():
+                print(key + "：" + str(value))
+        exit(0)
+
     def train(self, train_inputs):
         model = train_inputs['model']
         train_data = train_inputs['train_data']
         dev_data = train_inputs['dev_data']
         test_data = train_inputs['test_data']
-        self.label2idx, self.idx2label = train_inputs['label2idx'], train_inputs['idx2label']
+        if not self.config.merge_label:
+            self.label2idx, self.idx2label = train_inputs['label2idx'], train_inputs['idx2label']
+        else:
+            self.label2idx = {"":0, '政策目标':1, '申请审核程序':2, '资金管理-资金来源':3, '资金管理-管理原则':3, '监管评估-监督管理':4,
+                          '监管评估-考核评估':4, '政策内容-人才培养':5, '政策内容-资金支持':5, '政策内容-技术支持':5,
+                          '政策内容-公共服务':5, '政策内容-组织建设':6, '政策内容-目标规划':6, '政策内容-法规管制':6,
+                          '政策内容-政策宣传':6, '政策内容-税收优惠':6, '政策内容-金融支持':6, '政策内容-政府采购':7,
+                          '政策内容-对外承包':7, '政策内容-公私合作':7, '政策内容-海外合作':7}
+            self.idx2label = {0:'', 1:'政策目标', 2:'申请审核程序', 3:'资金管理', 4:'监管评估', 5:'政策内容-供给型',
+                          6:'政策内容-环境型', 7:'政策内容-需求型'}
+
+        if self.config.get_label_num:
+            self.get_l_num(train_data, dev_data, test_data)
 
         if model in [ModelE.xgboost, ModelE.SVM]:
             train_X, train_y = self._get_X_y(train_data)
@@ -135,10 +166,8 @@ class ModelFitting:
 
             # test
             with torch.no_grad():
-                # self.test(test_data)
                 print('============================testing...=====================================')
                 test_result = self.eval(test_data)
-                print(test_result['loss'])
             print("test finished!")
 
     def eval(self, dev_data):
@@ -169,6 +198,7 @@ class ModelFitting:
             result['f1'] = metrics_data['f1'] / metrics_data['batch_num']
             print('loss: {:.6f}, acc: {:.4f}, p: {:.4f}, r: {:.4f}, f1: {:.4f}'.format(result['loss'], test_accuracy, result['p'], result['r'],
                                                                           result['f1']))
+            print('confusion_metrics:\n', metrics.confusion_matrix(targets, pred_label))
         return result
 
     # Todo

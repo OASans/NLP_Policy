@@ -6,7 +6,8 @@ import random
 import numpy as np
 import sys
 
-sys.path.append('../..')
+sys.path.append('..')
+sys.path.append('..\..')
 
 from NLP_Policy.data_process.word2vec import get_w2v_vocab
 
